@@ -34,6 +34,18 @@ def searchmusic(name: str = ""):
     return xiaomusic.music_library.searchmusic(name)
 
 
+@router.get("/api/bili/search")
+async def api_bili_search(
+    keyword: str = Query(..., description="B站搜索关键词"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
+):
+    """B站音乐/视频搜索接口"""
+    from xiaomusic.bili_search import search_bilibili
+
+    return await search_bilibili(keyword=keyword, page=page, page_size=page_size)
+
+
 """======================在线搜索相关接口============================="""
 
 
@@ -234,9 +246,27 @@ def playingmusic(did: str = ""):
 
 
 @router.get("/musiclist")
-async def musiclist():
+async def musiclist(refresh: bool = False):
     """音乐列表"""
+    if refresh:
+        try:
+            xiaomusic.music_library.gen_all_music_list()
+            xiaomusic.update_all_playlist()
+        except Exception:
+            pass
     return xiaomusic.music_library.get_music_list()
+
+
+@router.get("/refreshmusiclist")
+@router.post("/refreshmusiclist")
+async def refresh_music_list():
+    """主动扫描磁盘并刷新音乐列表"""
+    try:
+        xiaomusic.music_library.gen_all_music_list()
+        xiaomusic.update_all_playlist()
+        return {"ret": "OK", "total": len(xiaomusic.music_library.all_music)}
+    except Exception as e:
+        return {"ret": "Failed", "error": str(e)}
 
 
 @router.get("/musicinfo")

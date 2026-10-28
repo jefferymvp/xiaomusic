@@ -304,57 +304,70 @@ function loadAndPlayMusic(musicName) {
 
   const audioElement = document.getElementById("audio");
   const playMusicIcon = document.getElementById('playPauseIcon');
-  // 2. 判断：切换了新歌曲 → 重新加载播放
+
+  // 切换了新歌曲 → 重新加载播放
   if (musicName !== lastMusicName) {
-    // 停止上一首歌曲
     if (audioElement) {
       audioElement.pause();
     }
 
-    // 向后端请求歌曲地址（你原来的接口，自动编码参数，解决&截断问题）
     $.get("/musicinfo", { name: musicName }, function (data) {
       if (data.ret !== "OK" || !data.url) {
         alert("歌曲地址获取失败！");
         return;
       }
-      // 设置音频源
-      audioElement.src = data.url;
-      // 播放音频
-      audioElement.play()
+
+      // 核心修复：如果是本机播放，将 URL 转换为当前站点的相对路径，避免受 XIAOMUSIC_HOSTNAME 错误 IP 影响
+      let playUrl = data.url;
+      try {
+        const parsedUrl = new URL(data.url, window.location.origin);
+        if (parsedUrl.pathname.startsWith("/music/") || parsedUrl.pathname.startsWith("/static/")) {
+          playUrl = parsedUrl.pathname + parsedUrl.search;
+        }
+      } catch (e) {
+        playUrl = data.url;
+      }
+
+      audioElement.src = playUrl;
+
+      const playPromise = audioElement.play();
+      if (playPromise !== undefined) {
+        playPromise
           .then(() => {
-              console.log("播放成功:", musicName);
-              // 更新本机播放状态
-              WebPlayer.setCurrentMusic(musicName);
+            console.log("播放成功:", musicName);
+            WebPlayer.setCurrentMusic(musicName);
 
-              // 更新播放列表和索引
-              const playlist = $("#music_list").val();
-              WebPlayer.setPlaylist(playlist);
+            const playlist = $("#music_list").val();
+            WebPlayer.setPlaylist(playlist);
 
-              const playList = WebPlayer.getPlayList();
-              const index = playList.indexOf(musicName);
-              if (index !== -1) {
-                  WebPlayer.setCurrentIndex(index);
-              }
-              // 更新 UI
-              updateWebPlayingUI();
-              // 更新收藏按钮状态
-              updateWebFavoriteButton();
+            const playList = WebPlayer.getPlayList();
+            const index = playList.indexOf(musicName);
+            if (index !== -1) {
+              WebPlayer.setCurrentIndex(index);
+            }
+            updateWebPlayingUI();
+            updateWebFavoriteButton();
           })
           .catch((error) => {
-              console.error("播放失败:", error);
-              alert("播放失败: " + error.message);
+            // AbortError 属于用户快速切换歌曲或调用 pause 产生的正常打断，不弹窗报警
+            if (error && (error.name === "AbortError" || (error.message && error.message.indexOf("interrupted") !== -1))) {
+              console.warn("播放请求被中断(正常切歌/暂停行为):", error.message);
+              return;
+            }
+            console.error("播放失败:", error);
+            alert("播放失败: " + error.message);
           });
+      }
 
       isPlaying = true;
       lastMusicName = musicName;
-      // 切换为暂停图标
       playMusicIcon.textContent = 'pause_circle_outline';
 
-      // 监听：歌曲播放完毕 → 自动切回播放图标
-      audioElement.addEventListener("ended", function () {
-      isPlaying = false;
-      playMusicIcon.textContent = "play_circle_outline";
-      });
+      // 避免重复绑定 ended 事件
+      audioElement.onended = function () {
+        isPlaying = false;
+        playMusicIcon.textContent = "play_circle_outline";
+      };
     }).fail(function () {
       alert("请求歌曲信息失败！");
     });
@@ -362,20 +375,27 @@ function loadAndPlayMusic(musicName) {
     return;
   }
 
-// 3. 同一首歌曲 → 播放/暂停 切换
+  // 同一首歌曲 → 播放/暂停 切换
   if (isPlaying) {
-    // 当前正在播放 → 暂停
     audioElement.pause();
     isPlaying = false;
     playMusicIcon.textContent = "play_circle_outline";
   } else {
-    // 当前已暂停 → 继续播放
-    audioElement.play();
-    isPlaying = true;
-    // 切换为暂停图标
-    playMusicIcon.textContent = 'pause_circle_outline';
+    const playPromise = audioElement.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          isPlaying = true;
+          playMusicIcon.textContent = 'pause_circle_outline';
+        })
+        .catch((error) => {
+          if (error && (error.name === "AbortError" || (error.message && error.message.indexOf("interrupted") !== -1))) {
+            return;
+          }
+          console.error("播放失败:", error);
+        });
+    }
   }
-
 }
 
 function webPlay() {
@@ -955,9 +975,24 @@ $.get("/getversion", function (data, status) {
   });
 });
 
+function manualRefreshLibrary() {
+  const refreshIcon = $(".label-with-action .material-icons:contains('refresh')");
+  refreshIcon.css("animation", "spin 1s linear infinite");
+
+  $.get("/refreshmusiclist", function (res) {
+    _refresh_music_list(function() {
+      refreshIcon.css("animation", "");
+    });
+  }).fail(function() {
+    _refresh_music_list(function() {
+      refreshIcon.css("animation", "");
+    });
+  });
+}
+
 function _refresh_music_list(callback) {
   $("#music_list").empty();
-  $.get("/musiclist", function (data, status) {
+  $.get("/musiclist?refresh=true", function (data, status) {
     console.log(data, status);
     favoritelist = Array.isArray(data["收藏"]) ? data["收藏"] : [];
 
@@ -1964,3 +1999,210 @@ $(document).ready(function () {
     }
   }, 100);
 });
+
+/* ================== B站音乐搜索与下载功能 ================== */
+function toggleBiliSearch() {
+  const isVisible = $("#bili-search-component").is(":visible");
+  if (isVisible) {
+    closeDialog("bili-search-component");
+  } else {
+    openDialog("bili-search-component");
+    $("#bili-search-input").focus();
+  }
+}
+
+// 绑定回车事件
+$(document).ready(function () {
+  $("#bili-search-input").on("keydown", function (e) {
+    if (e.keyCode === 13) {
+      doBiliSearch();
+    }
+  });
+});
+
+function doBiliSearch() {
+  const keyword = $("#bili-search-input").val().trim();
+  const statusEl = $("#bili-search-status");
+  const resultsEl = $("#bili-search-results");
+
+  if (!keyword) {
+    statusEl.html('<span style="color: #e67e22;">⚠️ 请先输入搜索关键词</span>');
+    return;
+  }
+
+  statusEl.html('<span style="color: #007bff;">⏳ 正在从 Bilibili 搜索中，请稍候...</span>');
+  resultsEl.empty();
+
+  $.ajax({
+    type: "GET",
+    url: "/api/bili/search?keyword=" + encodeURIComponent(keyword),
+    dataType: "json",
+    success: function (res) {
+      if (!res.success) {
+        statusEl.html('<span style="color: #dc3545;">❌ 搜索失败: ' + (res.error || "未知错误") + '</span>');
+        return;
+      }
+
+      const list = res.data || [];
+      if (list.length === 0) {
+        statusEl.text("未找到相关视频/音频，请换个关键词试试");
+        return;
+      }
+
+      if (res.is_direct) {
+        statusEl.html('🎯 <strong style="color: #28a745;">已精准直达解析视频/音乐</strong> (可直接播放或实时下载)：');
+      } else {
+        statusEl.html('✅ 找到 <strong>' + list.length + '</strong> 条相关结果 (点击下载即可实时查看下载进度)：');
+      }
+
+      list.forEach(function (item) {
+        const card = $('<div class="bili-item-card" style="display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.04);"></div>');
+
+        const topRow = $('<div style="display: flex; gap: 10px; align-items: center;"></div>');
+
+        const picHtml = item.pic ? '<img src="' + item.pic + '" referrerpolicy="no-referrer" style="width: 80px; height: 50px; object-fit: cover; border-radius: 4px; flex-shrink: 0;" />' : '';
+
+        const safeTitle = $("<div>").text(item.title).html();
+
+        const infoHtml = '<div style="flex: 1; min-width: 0;">' +
+          '<div style="font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px;" title="' + safeTitle + '">' + safeTitle + '</div>' +
+          '<div style="font-size: 12px; color: #888; display: flex; gap: 12px;">' +
+            '<span>👤 ' + (item.author || "UP主") + '</span>' +
+            '<span>⏱️ ' + (item.duration || "") + '</span>' +
+          '</div>' +
+        '</div>';
+
+        const actions = $('<div style="display: flex; gap: 6px; flex-shrink: 0;"></div>');
+
+        const playBtn = $('<button style="padding: 5px 12px; font-size: 12px; cursor: pointer; border-radius: 4px; background: #28a745; color: #fff; border: none; font-weight: 500;">播放</button>');
+        playBtn.on("click", function () {
+          const currentDid = $("#did").val() || window.did || "web_device";
+          if (currentDid === "web_device") {
+            // 本机播放模式：检查并直接用网页播放器播放
+            $.get("/musicinfo", { name: item.title }, function(res) {
+              if (res && res.ret === "OK" && res.url) {
+                loadAndPlayMusic(item.title);
+                statusEl.html('▶️ 正在本机播放: <strong>' + safeTitle + '</strong>');
+              } else {
+                statusEl.html('<span style="color: #e67e22;">💡 本机播放需先将歌曲保存到本地，请先点击旁边的【下载】按钮哦~</span>');
+              }
+            }).fail(function() {
+              statusEl.html('<span style="color: #e67e22;">💡 本机播放需先将歌曲保存到本地，请先点击旁边的【下载】按钮哦~</span>');
+            });
+          } else {
+            do_play_music(item.title, item.url);
+            statusEl.html('▶️ 已向当前设备发送播放指令: <strong>' + safeTitle + '</strong>');
+          }
+        });
+
+        const dlBtn = $('<button style="padding: 5px 12px; font-size: 12px; cursor: pointer; border-radius: 4px; background: #007bff; color: #fff; border: none; font-weight: 500;">下载</button>');
+
+        // 实时进度条容器
+        const progressBox = $('<div class="dl-progress-box" style="display: none; width: 100%; padding-top: 6px; border-top: 1px dashed #eee;">' +
+          '<div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">' +
+            '<span class="dl-status-text" style="color: #007bff; font-weight: 500;">⏳ 准备下载...</span>' +
+            '<span class="dl-percent-text" style="color: #666; font-weight: bold;">0%</span>' +
+          '</div>' +
+          '<div style="width: 100%; height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden;">' +
+            '<div class="dl-bar" style="width: 5%; height: 100%; background: #007bff; border-radius: 3px; transition: width 0.4s ease;"></div>' +
+          '</div>' +
+        '</div>');
+
+        dlBtn.on("click", function () {
+          const btn = $(this);
+          btn.prop("disabled", true).text("下载中...").css("background", "#6c757d");
+          progressBox.show();
+
+          const statusText = progressBox.find(".dl-status-text");
+          const percentText = progressBox.find(".dl-percent-text");
+          const bar = progressBox.find(".dl-bar");
+
+          statusText.text("⏳ 正在请求后端任务创建...");
+          bar.css({ width: "10%", background: "#007bff" });
+          percentText.text("10%");
+
+          $.ajax({
+            type: "POST",
+            url: "/downloadonemusic",
+            contentType: "application/json; charset=utf-8",
+            data: JSON.stringify({
+              url: item.url,
+              name: item.title
+            }),
+            success: function (dlRes) {
+              if (dlRes.ret !== "OK" || !dlRes.task_id) {
+                statusText.html('<span style="color: #dc3545;">❌ 启动任务失败</span>');
+                bar.css("background", "#dc3545");
+                btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+                return;
+              }
+
+              const taskId = dlRes.task_id;
+              let currentProgress = 15;
+              statusText.text("⏳ 正在下载音频流并使用 FFmpeg 转码...");
+              bar.css("width", currentProgress + "%");
+              percentText.text(currentProgress + "%");
+
+              // 启动定时器实时轮询下载任务真实进度
+              const pollTimer = setInterval(function () {
+                $.ajax({
+                  type: "GET",
+                  url: "/download_progress?task_id=" + encodeURIComponent(taskId),
+                  dataType: "json",
+                  success: function (progRes) {
+                    if (progRes.ret !== "OK") return;
+
+                    const status = progRes.status;
+                    const curMsg = progRes.current_song || "";
+
+                    if (status === "downloading" || status === "pending") {
+                      if (currentProgress < 85) {
+                        currentProgress += 5;
+                      }
+                      bar.css("width", currentProgress + "%");
+                      percentText.text(currentProgress + "%");
+                      statusText.text("⏳ 正在抓取转码: " + (curMsg || "处理中..."));
+                    } else if (status === "completed") {
+                      clearInterval(pollTimer);
+                      bar.css({ width: "100%", background: "#28a745" });
+                      percentText.text("100%");
+                      statusText.html('<span style="color: #28a745; font-weight: bold;">🎉 下载完成！已存入本地歌曲库</span>');
+                      btn.prop("disabled", true).text("✅ 已完成").css("background", "#28a745");
+                      statusEl.html('🎉 <strong>' + safeTitle + '</strong> 下载完成，已加入【下载歌曲】歌单！');
+
+                      // 刷新系统歌曲列表与歌单
+                      if (typeof sendcmd === "function") {
+                        sendcmd("gen_music_list");
+                      }
+                    } else if (status === "failed") {
+                      clearInterval(pollTimer);
+                      bar.css({ width: "100%", background: "#dc3545" });
+                      statusText.html('<span style="color: #dc3545;">❌ 下载失败: ' + (curMsg || "未知错误") + '</span>');
+                      btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+                    }
+                  },
+                  error: function () {
+                    // 网络波动时保持轮询
+                  }
+                });
+              }, 1200);
+            },
+            error: function () {
+              statusText.html('<span style="color: #dc3545;">❌ 下载请求发生网络错误</span>');
+              bar.css("background", "#dc3545");
+              btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+            }
+          });
+        });
+
+        actions.append(playBtn).append(dlBtn);
+        topRow.append(picHtml).append(infoHtml).append(actions);
+        card.append(topRow).append(progressBox);
+        resultsEl.append(card);
+      });
+    },
+    error: function () {
+      statusEl.html('<span style="color: #dc3545;">网络请求错误，请检查网络或服务状态</span>');
+    }
+  });
+}

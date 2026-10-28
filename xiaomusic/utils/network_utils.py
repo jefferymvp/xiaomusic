@@ -211,8 +211,11 @@ async def download_one_music(
         title = f"{name}.%(ext)s"
     download_root = download_root or config.download_path
 
-    sbp_args = (
-        "yt-dlp",
+    import shutil, sys
+    yt_cmd = shutil.which("yt-dlp")
+    base_cmd = (yt_cmd,) if yt_cmd else (sys.executable, "-m", "yt_dlp")
+
+    sbp_args = base_cmd + (
         "--no-playlist",
         "-x",
         "--audio-format",

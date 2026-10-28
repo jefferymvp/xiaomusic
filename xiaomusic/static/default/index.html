@@ -44,6 +44,10 @@
 
         <label for="music_name" class="label-with-action">选择歌曲:
             <div class="action-buttons">
+                <div class="option-inline" onclick="manualRefreshLibrary()" role="button" aria-label="重新扫描并刷新曲库" tabindex="0">
+                    <span class="material-icons" aria-hidden="true">refresh</span>
+                    <span class="tooltip">刷新曲库</span>
+                </div>
                 <div class="option-inline" onclick="triggerUpload()" role="button" aria-label="上传歌曲" tabindex="0">
                     <span class="material-icons" aria-hidden="true">file_upload</span>
                     <span class="tooltip">上传歌曲</span>
@@ -72,7 +76,7 @@
                 <span class="duration" id="duration">00:00</span>
             </div>
         </div>
-        <audio id="audio" controls autoplay class="hidden-audio"></audio>
+        <audio id="audio" controls class="hidden-audio" preload="metadata"></audio>
 
         <div class="buttons">
             <div class="player-controls button-group">
@@ -153,12 +157,33 @@
                     <span class="material-icons" aria-hidden="true">music_note</span>
                     <p>在线搜索</p>
                 </div>
+                <div onclick="toggleBiliSearch()" class="icon-item device-enable" role="button" aria-label="B站音乐搜索与下载" tabindex="0">
+                    <span class="material-icons" aria-hidden="true">ondemand_video</span>
+                    <p>B站搜索</p>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 弹窗遮罩层 -->
     <div class="component-overlay" id="component-overlay" onclick="closeAllDialogs()"></div>
+
+    <!-- B站搜索与下载组件 -->
+    <div class="component" id="bili-search-component" role="dialog" aria-modal="true" aria-labelledby="bili-search-title" style="max-width: 540px; width: 92%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 id="bili-search-title" style="margin: 0; font-size: 18px;">📺 B站音乐搜索与下载</h2>
+            <a href="/static/default/downloadtool.html" target="_blank" style="font-size: 13px; color: #007bff; text-decoration: underline;">📥 打开下载任务列表</a>
+        </div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <input type="text" id="bili-search-input" class="search-input" style="flex: 1; margin-bottom: 0;" placeholder="输入歌曲名、BV号 (如 BV14K4y1A7vD) 或完整视频链接 (回车搜索)">
+            <button onclick="doBiliSearch()" style="white-space: nowrap; padding: 0 16px;">搜索</button>
+        </div>
+        <div id="bili-search-status" style="font-size: 13px; color: #666; margin-bottom: 8px; min-height: 18px;"></div>
+        <div id="bili-search-results" style="max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px;"></div>
+        <div class="component-button-one" style="margin-top: 14px;">
+            <button onclick="toggleBiliSearch()" class="close-button">关闭</button>
+        </div>
+    </div>
 
     <!-- 搜索组件 -->
     <div class="component" id="search-component" role="dialog" aria-modal="true" aria-labelledby="search-title">

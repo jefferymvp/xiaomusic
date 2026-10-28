@@ -746,8 +746,11 @@ class XiaoMusicDevice:
             except ProcessLookupError:
                 pass
 
-        sbp_args = (
-            "yt-dlp",
+        import shutil, sys
+        yt_cmd = shutil.which("yt-dlp")
+        base_cmd = (yt_cmd,) if yt_cmd else (sys.executable, "-m", "yt_dlp")
+
+        sbp_args = base_cmd + (
             f"{self.config.search_prefix}{search_key}",
             "-x",
             "--audio-format",

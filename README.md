@@ -113,31 +113,66 @@ docker run -d \
 
 ---
 
-### 方案 B：本地 Python 源码运行（适合 Windows / macOS / Linux）
+### 方案 B：本地 Python 源码与虚拟环境运行（适合 Windows / macOS / Linux）
 
-#### 1. 安装系统依赖
-- Python 3.10+
-- FFmpeg（需配置至系统环境变量或在启动参数中指定）
+#### 1. 系统底层依赖
+- **Python 3.10+**（推荐 Python 3.11 或 3.12）
+- **FFmpeg / FFprobe**（需安装并加入系统 PATH，或在启动参数中显式指定 `--ffmpeg_location`）
 
-#### 2. 安装与启动
+#### 2. 创建并配置虚拟环境
+推荐为 XiaoMusic 建立专用的虚拟环境，实现与全局 Python 隔离：
+
 ```bash
-# 克隆代码
+# 1. 克隆代码
 git clone https://github.com/hanxi/xiaomusic.git
 cd xiaomusic
 
-# 推荐使用虚拟环境安装
+# 2. 创建虚拟环境 (二选一)
+# 方式 A：使用标准 Python 自带 venv
 python -m venv .venv
-# Windows PowerShell 激活
+
+# 方式 B：使用现代化极速包管理工具 uv (推荐，秒级建环)
+# uv venv .venv
+```
+
+#### 3. 安装项目依赖
+```bash
+# Windows PowerShell 激活虚拟环境
 .venv\Scripts\Activate.ps1
-# Linux / macOS 激活
+# (若提示脚本被禁止运行，可先执行: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)
+
+# Linux / macOS 激活虚拟环境
 # source .venv/bin/activate
 
-# 安装依赖
+# 安装完整项目依赖
 pip install -e .
-
-# 启动服务
-python -m xiaomusic.cli --port 58090 --ffmpeg_location "C:\app\ffmpeg\bin"
+# 或使用 uv: uv pip install -e .
 ```
+
+#### 4. 在虚拟环境下启动服务
+
+##### 💡 启动方式 1：直接调用虚拟环境解释器（推荐开机自启、批处理或守护进程）
+无需先激活环境，直接指定虚拟环境内的 Python 执行文件，最稳健防错：
+- **Windows (PowerShell / CMD)**：
+  ```powershell
+  .venv\Scripts\python.exe -m xiaomusic.cli --port 58090 --ffmpeg_location "C:\app\ffmpeg\bin"
+  ```
+- **Linux / macOS**：
+  ```bash
+  ./.venv/bin/python -m xiaomusic.cli --port 58090
+  ```
+
+##### 💡 启动方式 2：在已激活的虚拟环境中运行
+- **Windows**：
+  ```powershell
+  .venv\Scripts\Activate.ps1
+  python -m xiaomusic.cli --port 58090 --ffmpeg_location "C:\app\ffmpeg\bin"
+  ```
+- **Linux / macOS**：
+  ```bash
+  source .venv/bin/activate
+  python -m xiaomusic.cli --port 58090
+  ```
 
 ---
 

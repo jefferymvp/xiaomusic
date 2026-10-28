@@ -9,7 +9,7 @@
     <link rel="preload" href="./materialicons.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="./materialiconsoutlined.woff2" as="font" type="font/woff2" crossorigin>
     <script src="./jquery-3.7.1.min.js?version=1780982533"></script>
-    <script src="./setting.js?version=1780982533"></script>
+    <script src="./setting.js?version=1780982999"></script>
     <link rel="stylesheet" type="text/css" href="./setting.css?version=1780982533" />
 
 
@@ -31,7 +31,7 @@
                     <span class="material-icons" aria-hidden="true">save</span>
                     <span>保存配置</span>
                 </button>
-                <button class="logout-button" id="logout-btn" aria-label="退出登录" style="background-color: #d32f2f; color: white;">
+                <button class="logout-button" id="logout-btn" onclick="doLogout()" aria-label="退出登录" style="background-color: #d32f2f; color: white;">
                     <span class="material-icons" aria-hidden="true">logout</span>
                     <span>退出登录</span>
                 </button>
@@ -109,7 +109,7 @@
                                     <p id="qrcode-status">点击下方按钮获取登录二维码</p>
                                 </div>
                                 <button id="refresh-qrcode">获取二维码</button>
-                                <button id="logout-qrcode-btn" class="mini-button" style="background-color: #d32f2f; color: white; margin-left: 10px;">退出当前账号</button>
+                                <button id="logout-qrcode-btn" onclick="doLogout()" class="mini-button" style="background-color: #d32f2f; color: white; margin-left: 10px;">退出当前账号</button>
                             </div>
                         </div>
                     </div>
@@ -655,6 +655,34 @@
             <a href="https://xdocs.hanxi.cc" target="_blank">XiaoMusic</a>
         </p>
     </footer>
+    <script>
+        function doLogout() {
+            if (!confirm("确定要退出当前小米账号并清除本地登录凭证吗？退出后可重新扫码或换号登录。")) {
+                return;
+            }
+            fetch("/api/logout", { method: "POST" })
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    if (data.ret === "OK" || data.success) {
+                        alert("已成功退出登录！本地凭据已清除。");
+                        window.location.reload();
+                    } else {
+                        alert("退出失败: " + (data.message || "未知错误"));
+                    }
+                })
+                .catch(function() {
+                    fetch("/api/logout")
+                        .then(function(res) { return res.json(); })
+                        .then(function() {
+                            alert("已成功退出登录！本地凭据已清除。");
+                            window.location.reload();
+                        })
+                        .catch(function(e) {
+                            alert("请求失败，请检查服务连接: " + e);
+                        });
+                });
+        }
+    </script>
 </body>
 
 </html>

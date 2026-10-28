@@ -162,6 +162,24 @@ class MiJiaAPI:
         self._available_cache_time = current_time
         return True
 
+    def logout(self):
+        """退出登录，清除鉴权数据和本地 auth.json 文件"""
+        self.auth_data = {}
+        self.session = None
+        self._available_cache = None
+        self._available_cache_time = 0
+        if self.auth_data_path and self.auth_data_path.exists():
+            try:
+                self.auth_data_path.unlink()
+            except Exception:
+                pass
+        home_auth = Path.home() / ".config" / "mijia-api" / "auth.json"
+        if home_auth.exists():
+            try:
+                home_auth.unlink()
+            except Exception:
+                pass
+
     @property
     def pass_o(self) -> str:
         if "pass_o" in self.auth_data:

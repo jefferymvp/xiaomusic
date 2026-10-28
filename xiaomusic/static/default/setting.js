@@ -93,6 +93,33 @@ function fetchQRCode() {
 })();
 
 $(function () {
+  function doLogout() {
+    if (!confirm("确定要退出当前小米账号并清除本地登录凭证吗？退出后可重新扫码或换号登录。")) {
+      return;
+    }
+    $.post("/api/logout", function (res) {
+      if (res.ret === "OK" || res.success) {
+        alert("已成功退出登录！本地凭据已清除。");
+        location.reload();
+      } else {
+        alert("退出失败: " + (res.message || "未知错误"));
+      }
+    }).fail(function () {
+      // 容错处理
+      $.get("/api/logout", function (res) {
+        if (res.ret === "OK" || res.success) {
+          alert("已成功退出登录！本地凭据已清除。");
+          location.reload();
+        } else {
+          alert("退出失败: " + (res.message || "未知错误"));
+        }
+      }).fail(function () {
+        alert("网络请求失败，请检查服务连接");
+      });
+    });
+  }
+
+  $("#logout-btn, #logout-qrcode-btn").on("click", doLogout);
   $("#refresh-qrcode").on("click", fetchQRCode);
 
   // 拉取版本

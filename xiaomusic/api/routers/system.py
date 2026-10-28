@@ -280,6 +280,40 @@ async def simulate_token_expire():
     }
 
 
+@router.post("/api/logout")
+@router.get("/api/logout")
+async def logout():
+    """退出登录接口：清理本地登录凭据并重置内存登录态"""
+    try:
+        # 1. 退出米家二维码登录器
+        mi_jia_api.logout()
+
+        # 2. 退出并清理 AuthManager 状态与文件
+        if hasattr(xiaomusic, "auth_manager") and xiaomusic.auth_manager:
+            await xiaomusic.auth_manager.logout()
+
+        # 3. 停止当前设备播放与重置轮询
+        if hasattr(xiaomusic, "conversation_poller") and xiaomusic.conversation_poller:
+            xiaomusic.conversation_poller.last_timestamp = {}
+
+        # 4. 保存清空后的配置
+        xiaomusic.save_cur_config()
+
+        log.info("[AUTH] 账号已成功注销，本地所有凭据已彻底清空")
+        return {
+            "ret": "OK",
+            "success": True,
+            "message": "已成功退出登录，本地凭据与设备已完全清除",
+        }
+    except Exception as e:
+        log.exception(f"退出登录处理失败: {e}")
+        return {
+            "ret": "FAIL",
+            "success": False,
+            "message": f"退出登录失败: {str(e)}",
+        }
+
+
 @router.get("/latestversion")
 async def latest_version():
     """获取最新版本"""

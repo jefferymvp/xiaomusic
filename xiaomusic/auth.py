@@ -445,8 +445,50 @@ class AuthManager:
                 "[AUTH-get_cookie] 内存 token 中缺少 userId 或 serviceToken"
             )
             return None
-        self.log.info("[AUTH-get_cookie] 从内存 token 降级获取 cookie")
         cookie_string = COOKIE_TEMPLATE.format(
             device_id=device_id, service_token=service_token, user_id=user_id
         )
         return parse_cookie_string(cookie_string)
+
+    async def logout(self):
+        """退出登录，清理内存状态和本地 .mi.token 与 auth.json"""
+        self.log.info("[AUTH] 执行退出登录流程...")
+        # 1. 清理本地 .mi.token 凭证
+        if os.path.exists(self.mi_token_home):
+            try:
+                os.remove(self.mi_token_home)
+                self.log.info(f"[AUTH] 已清除 token 缓存文件: {self.mi_token_home}")
+            except Exception as e:
+                self.log.error(f"[AUTH] 清除 token 缓存文件失败: {e}")
+
+        # 2. 清理本地 auth.json 凭证
+        auth_json = os.path.join(self.config.conf_path, "auth.json")
+        if os.path.exists(auth_json):
+            try:
+                os.remove(auth_json)
+                self.log.info(f"[AUTH] 已清除授权文件: {auth_json}")
+            except Exception as e:
+                self.log.error(f"[AUTH] 清除授权文件失败: {e}")
+
+        # 3. 清空内存服务对象
+        if self.mina_service and self.mina_service.account:
+            self.mina_service.account.token = None
+        self.mina_service = None
+        self.miio_service = None
+        self.cookie_jar = None
+        self._last_login_ok = False
+        self._consecutive_failures = 0
+        self._cur_did = None
+
+        # 4. 清空设备列表
+        if self.device_manager:
+            self.device_manager.devices = {}
+            self.device_manager.device_id_did = {}
+            self.device_manager.groups = {}
+
+        # 5. 清理配置项中的鉴权凭证
+        self.config.account = ""
+        self.config.password = ""
+        self.config.cookie = ""
+        self.config.mi_did = ""
+        self.log.info("[AUTH] 退出登录完成，凭证已彻底销毁")

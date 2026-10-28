@@ -16,6 +16,10 @@ on:
         required: true
         type: boolean
         default: true
+      platforms:
+        description: "构建目标平台 (默认包含 amd64 与 arm64)"
+        required: false
+        default: "linux/amd64,linux/arm64"
       custom_tag:
         description: "自定义镜像 Tag (可选，留空则根据分支/Tag自动生成)"
         required: false
@@ -27,7 +31,7 @@ permissions:
 
 jobs:
   docker:
-    name: Build & Push Docker Image (amd64)
+    name: Build & Push Multi-Arch Docker Image (amd64, arm64)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,6 +39,9 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
+
+      - name: Set up QEMU (支持 ARM/多架构跨平台模拟)
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -72,11 +79,11 @@ jobs:
             type=ref,event=pr
             type=sha,prefix=sha-,format=short
 
-      - name: Build and push Docker image
+      - name: Build and push Multi-Arch Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/amd64
+          platforms: ${{ inputs.platforms || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' && (inputs.push == null || inputs.push == true) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

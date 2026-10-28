@@ -11,15 +11,6 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      platforms:
-        description: "构建目标平台 (逗号分隔)"
-        required: true
-        default: "linux/amd64,linux/arm64"
-        type: choice
-        options:
-          - "linux/amd64,linux/arm64"
-          - "linux/amd64"
-          - "linux/amd64,linux/arm64,linux/arm/v7"
       push:
         description: "是否推送到镜像仓库"
         required: true
@@ -36,7 +27,7 @@ permissions:
 
 jobs:
   docker:
-    name: Build & Push Docker Image
+    name: Build & Push Docker Image (amd64)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -44,9 +35,6 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -84,20 +72,11 @@ jobs:
             type=ref,event=pr
             type=sha,prefix=sha-,format=short
 
-      - name: Determine Platforms
-        id: platform
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "platforms=${{ inputs.platforms }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "platforms=linux/amd64,linux/arm64" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: ${{ steps.platform.outputs.platforms }}
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' && (inputs.push == null || inputs.push == true) }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -210,13 +210,18 @@ fun BiliSearchScreen(viewModel: BiliSearchViewModel = viewModel()) {
                         } else {
                             config.getFullMediaUrl("/music/" + URLEncoder.encode(matchedSong, "UTF-8"))
                         }
-                        player.play(musicUrl, matchedSong)
+                        player.playLocal(musicUrl, matchedSong)
                         Toast.makeText(context, "▶️ 正在本机播放: $matchedSong", Toast.LENGTH_SHORT).show()
                     } else {
                         Toast.makeText(context, "💡 本机播放需先存到本地，请先点击右侧【下载】", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    api.playMusic(PlayMusicRequest(did = config.selectedDid, musicname = item.title, searchkey = item.url))
+                    player.playOnDevice(
+                        did = config.selectedDid,
+                        deviceName = currentDevice.name,
+                        title = item.title,
+                        searchKey = item.url
+                    )
                     Toast.makeText(context, "🔊 已投送到【${currentDevice.name}】播放！", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {

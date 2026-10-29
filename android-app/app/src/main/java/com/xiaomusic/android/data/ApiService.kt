@@ -56,4 +56,22 @@ interface ApiService {
     suspend fun playMusic(
         @Body request: PlayMusicRequest
     ): SimpleRetResponse
+
+    // 10. 执行设备命令（如下一首、上一首、继续播放等）
+    @POST("/cmd")
+    suspend fun sendCmd(
+        @Body request: DidCmdRequest
+    ): SimpleRetResponse
+
+    // 11. 设备停止/关机
+    @POST("/device/stop")
+    suspend fun stopDevice(
+        @Body request: DidRequest
+    ): SimpleRetResponse
+
+    // 12. 获取指定音箱设备当前播放音乐和进度
+    @GET("/playingmusic")
+    suspend fun getPlayingMusic(
+        @Query("did") did: String
+    ): PlayingMusicResponse
 }

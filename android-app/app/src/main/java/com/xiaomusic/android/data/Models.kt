@@ -77,6 +77,35 @@ data class PlayMusicRequest(
     val searchkey: String = ""
 )
 
+// 音箱口令控制请求
+data class DidCmdRequest(
+    val did: String,
+    val cmd: String
+)
+
+// 设备基础请求 (如停止关机)
+data class DidRequest(
+    val did: String
+)
+
+// 音箱实时播放状态响应
+data class PlayingMusicResponse(
+    val ret: String? = null,
+    @SerializedName("is_playing") val isPlaying: Boolean = false,
+    @SerializedName("cur_music") val curMusic: String? = null,
+    @SerializedName("cur_playlist") val curPlaylist: String? = null,
+    val offset: Double = 0.0,
+    val duration: Double = 0.0
+)
+
+// 服务端连接状态模型
+data class ConnectionState(
+    val isTesting: Boolean = false,
+    val isSuccess: Boolean? = null,
+    val message: String? = null,
+    val serverVersion: String? = null
+)
+
 data class SimpleRetResponse(
     val ret: String? = null
 )

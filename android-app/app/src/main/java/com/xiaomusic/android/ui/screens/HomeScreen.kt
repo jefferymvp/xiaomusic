@@ -90,8 +90,16 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         }
     }
 
+    // 当切换为音箱设备时，自动启动该音箱的实时状态同步
+    LaunchedEffect(currentDevice.did) {
+        if (!currentDevice.isLocal) {
+            player.startDevicePolling(currentDevice.did, currentDevice.name)
+        }
+    }
+
     // 播放歌曲（手机本机 或 投送小爱音箱）
     fun playSong(name: String) {
+        val currentSongs = viewModel.musicMap[viewModel.selectedPlaylist] ?: emptyList()
         scope.launch {
             try {
                 val api = config.getApiService()
@@ -104,16 +112,16 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                     } else {
                         config.getFullMediaUrl("/music/" + URLEncoder.encode(name, "UTF-8"))
                     }
-                    player.play(fullUrl, name)
+                    player.playLocal(fullUrl, name, currentSongs)
                     Toast.makeText(context, "▶️ 正在本机播放: $name", Toast.LENGTH_SHORT).show()
                 } else {
                     // 2. 投送到小爱音箱播放
-                    api.playMusic(
-                        PlayMusicRequest(
-                            did = config.selectedDid,
-                            musicname = name,
-                            searchkey = ""
-                        )
+                    player.playOnDevice(
+                        did = config.selectedDid,
+                        deviceName = currentDevice.name,
+                        title = name,
+                        searchKey = "",
+                        playlist = currentSongs
                     )
                     Toast.makeText(
                         context,

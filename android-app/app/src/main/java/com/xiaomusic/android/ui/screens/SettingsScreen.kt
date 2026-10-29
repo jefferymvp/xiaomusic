@@ -36,55 +36,24 @@ fun SettingsScreen() {
     var hostInput by remember { mutableStateOf(configManager.host) }
     var portInput by remember { mutableStateOf(configManager.port.toString()) }
 
-    var testStatus by remember { mutableStateOf<String?>(null) }
-    var isTesting by remember { mutableStateOf(false) }
-    var isSuccess by remember { mutableStateOf(false) }
-
-    // 音箱设备列表
-    var deviceList by remember { mutableStateOf<List<PlaybackDevice>>(emptyList()) }
-    var isLoadingDevices by remember { mutableStateOf(false) }
+    // 直接从全局单例收集最新状态，无论怎么切 Tab，都不会丢失或重新置空闪烁
+    val connectionState by configManager.connectionState.collectAsState()
+    val deviceList by configManager.deviceList.collectAsState()
+    val isLoadingDevices by configManager.isLoadingDevices.collectAsState()
     val currentSelectedDevice by configManager.currentDeviceState.collectAsState()
 
-    fun loadDevices() {
-        isLoadingDevices = true
-        scope.launch {
-            try {
-                deviceList = configManager.fetchDevicesFromServer()
-            } catch (e: Exception) {
-                // 保持已加载
-            } finally {
-                isLoadingDevices = false
-            }
-        }
-    }
-
-    fun testConnection() {
-        val port = portInput.toIntOrNull() ?: 58090
-        configManager.host = hostInput.trim()
-        configManager.port = port
-
-        isTesting = true
-        testStatus = "正在测试连接 ${configManager.baseUrl} ..."
-        scope.launch {
-            try {
-                val api = configManager.getApiService()
-                val versionRes = api.getVersion()
-                val ver = versionRes.version ?: "0.6.1"
-                isSuccess = true
-                testStatus = "✅ 连接成功！服务端 XiaoMusic 版本: v$ver"
-                // 连接成功后自动刷新音箱设备列表
-                loadDevices()
-            } catch (e: Exception) {
-                isSuccess = false
-                testStatus = "❌ 连接失败: ${e.localizedMessage ?: "网络超时或地址不正确"}"
-            } finally {
-                isTesting = false
-            }
-        }
-    }
-
+    // 仅在全局从未进行过任何检测时，才在后台静默发起一次检测，不造成UI未连接闪烁
     LaunchedEffect(Unit) {
-        testConnection()
+        if (connectionState.isSuccess == null && !connectionState.isTesting) {
+            configManager.testConnectionAsync(isSilent = true)
+        }
+    }
+
+    fun onSaveAndTest() {
+        val port = portInput.toIntOrNull() ?: 58090
+        scope.launch {
+            configManager.testConnection(hostInput.trim(), port)
+        }
     }
 
     Column(
@@ -107,7 +76,7 @@ fun SettingsScreen() {
             value = hostInput,
             onValueChange = { hostInput = it },
             label = { Text("服务端 IP / 主机名") },
-            placeholder = { Text("例如 192.168.6.58") },
+            placeholder = { Text("默认 192.168.6.114") },
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(8.dp),
             singleLine = true
@@ -128,14 +97,14 @@ fun SettingsScreen() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-            onClick = { testConnection() },
+            onClick = { onSaveAndTest() },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),
             shape = RoundedCornerShape(8.dp),
-            enabled = !isTesting
+            enabled = !connectionState.isTesting
         ) {
-            if (isTesting) {
+            if (connectionState.isTesting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(20.dp),
                     color = Color.White,
@@ -150,7 +119,9 @@ fun SettingsScreen() {
             }
         }
 
-        testStatus?.let { status ->
+        // 仅在明确有连接状态信息时展示状态卡片
+        connectionState.message?.let { status ->
+            val isSuccess = connectionState.isSuccess == true
             Spacer(modifier = Modifier.height(16.dp))
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -198,14 +169,17 @@ fun SettingsScreen() {
                     style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray)
                 )
             }
-            IconButton(onClick = { loadDevices() }, enabled = !isLoadingDevices) {
+            IconButton(
+                onClick = { configManager.loadDevicesAsync() },
+                enabled = !isLoadingDevices
+            ) {
                 Icon(Icons.Default.Refresh, contentDescription = "刷新设备", tint = TealPrimary)
             }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (isLoadingDevices) {
+        if (isLoadingDevices && deviceList.size <= 1) {
             Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), color = TealPrimary)
             }
@@ -248,31 +222,29 @@ fun SettingsScreen() {
                                     text = device.name,
                                     style = MaterialTheme.typography.bodyMedium.copy(
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) TealPrimary else Color.Unspecified
+                                        color = if (isSelected) TealPrimary else MaterialTheme.colorScheme.onSurface
                                     )
                                 )
                                 Text(
-                                    text = if (device.isLocal) "使用手机自带喇叭或耳机播放 (默认)" else "DID: ${device.did} · 局域网协议投送",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = Color.Gray)
+                                    text = if (device.isLocal) "使用当前手机听歌" else "设备 ID: ${device.did}",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
                                 )
                             }
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    configManager.selectDevice(device)
-                                    Toast.makeText(
-                                        context,
-                                        if (device.isLocal) "已切换为【本机播放】" else "已切换为【${device.name}】投送播放",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            )
+                            if (isSelected) {
+                                Text(
+                                    text = "当前使用",
+                                    color = TealPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(30.dp))
     }
 }

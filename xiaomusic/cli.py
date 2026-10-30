@@ -177,7 +177,7 @@ def main():
         # 创建 uvicorn 配置，禁用其信号处理
         uvicorn_config = uvicorn.Config(
             HttpApp,
-            host=["0.0.0.0", "::"],
+            host="0.0.0.0",
             port=port,
             log_config=LOGGING_CONFIG,
         )

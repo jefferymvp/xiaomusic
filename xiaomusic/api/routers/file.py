@@ -288,7 +288,17 @@ async def downloadjson(data: UrlInfo, Verifcation=Depends(verification)):
 
 @router.post("/downloadplaylist")
 async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verification)):
-    """下载歌单"""
+    """下载歌单（保证一次处理一个歌单）"""
+    # 互斥检查：如果当前已有歌单正在下载，则拒绝重复创建，提示当前歌单
+    for tid, task in download_tasks.items():
+        if task.get("task_type") == "playlist" and task.get("status") in ["pending", "downloading"]:
+            return {
+                "ret": "BUSY",
+                "msg": f"当前已有歌单【{task.get('dirname', '未命名歌单')}】正在下载中，请等待其处理完成后再提交新歌单。",
+                "task_id": tid,
+                "dirname": task.get("dirname", ""),
+            }
+
     task_id = str(uuid.uuid4())
     try:
         # 初始化任务状态
@@ -304,34 +314,44 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
         }
 
         bili_fav_list = await check_bili_fav_list(data.url)
-        download_proc_list = []
         if bili_fav_list:
             total_songs = len(bili_fav_list)
             download_tasks[task_id]["total"] = total_songs
             download_tasks[task_id]["status"] = "downloading"
 
-            for idx, (bvid, title) in enumerate(bili_fav_list.items(), 1):
-                bvurl = f"https://www.bilibili.com/video/{bvid}"
-                download_tasks[task_id]["current_song"] = (
-                    f"{title} ({idx}/{total_songs})"
-                )
-                download_proc_list[title] = await download_one_music(
-                    config, bvurl, os.path.join(data.dirname, title)
-                )
+            async def run_bili_fav_download():
+                try:
+                    for idx, (bvid, title) in enumerate(bili_fav_list.items(), 1):
+                        bvurl = f"https://www.bilibili.com/video/{bvid}"
+                        download_tasks[task_id]["current_song"] = (
+                            f"{title} ({idx}/{total_songs})"
+                        )
+                        proc = await download_one_music(
+                            config, bvurl, os.path.join(data.dirname, title)
+                        )
+                        exit_code = await proc.wait()
+                        log.info(f"Download completed {title} with exit code {exit_code}")
+                        download_tasks[task_id]["completed"] += 1
 
-            for title, download_proc_sigle in download_proc_list.items():
-                exit_code = await download_proc_sigle.wait()
-                log.info(f"Download completed {title} with exit code {exit_code}")
-                download_tasks[task_id]["completed"] += 1
+                    dir_path = safe_join_path(config.download_path, data.dirname)
+                    log.debug(f"Download dir_path: {dir_path}")
+                    remove_common_prefix(dir_path)
+                    chmoddir(dir_path)
 
-            dir_path = safe_join_path(config.download_path, data.dirname)
-            log.debug(f"Download dir_path: {dir_path}")
-            # 可能只是部分失败，都需要整理下载目录
-            remove_common_prefix(dir_path)
-            chmoddir(dir_path)
+                    try:
+                        xiaomusic.music_library.gen_all_music_list()
+                        xiaomusic.update_all_playlist()
+                    except Exception as e:
+                        log.exception(f"refresh music list failed after fav download: {e}")
 
-            download_tasks[task_id]["status"] = "completed"
-            download_tasks[task_id]["current_song"] = ""
+                    download_tasks[task_id]["status"] = "completed"
+                    download_tasks[task_id]["current_song"] = ""
+                except Exception as e:
+                    log.exception(f"Fav download error: {e}")
+                    download_tasks[task_id]["status"] = "failed"
+                    download_tasks[task_id]["current_song"] = str(e)
+
+            asyncio.create_task(run_bili_fav_download())
             return {"ret": "OK", "task_id": task_id}
         else:
             download_tasks[task_id]["status"] = "downloading"
@@ -428,6 +448,12 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
                         )
                         download_tasks[task_id]["completed"] = final_count
                         download_tasks[task_id]["total"] = final_count
+
+                    try:
+                        xiaomusic.music_library.gen_all_music_list()
+                        xiaomusic.update_all_playlist()
+                    except Exception as e:
+                        log.exception(f"refresh music list failed after playlist download: {e}")
             except asyncio.CancelledError:
                 log.info(f"Download task cancelled: {task_id}")
                 monitor_task.cancel()
@@ -598,6 +624,30 @@ async def downloadonemusic(data: DownloadOneMusic, Verifcation=Depends(verificat
     return {"ret": "Failed download", "task_id": task_id}
 
 
+@router.get("/api/download/active_playlist")
+async def get_active_playlist_download():
+    """获取当前正在下载的歌单任务（一次仅处理一个歌单）"""
+    for tid, task in download_tasks.items():
+        if task.get("task_type") == "playlist" and task.get("status") in ["pending", "downloading"]:
+            progress = 0
+            if task.get("total", 0) > 0:
+                progress = int((task["completed"] / task["total"]) * 100)
+            return {
+                "ret": "OK",
+                "has_active": True,
+                "task": {
+                    "task_id": tid,
+                    "dirname": task.get("dirname", ""),
+                    "total": task.get("total", 0),
+                    "completed": task.get("completed", 0),
+                    "progress": progress,
+                    "status": task.get("status", ""),
+                    "current_song": task.get("current_song", ""),
+                },
+            }
+    return {"ret": "OK", "has_active": False}
+
+
 @router.get("/download_progress")
 async def get_download_progress(task_id: str = ""):
     """获取下载任务进度
@@ -624,6 +674,8 @@ async def get_download_progress(task_id: str = ""):
                 "progress": progress,
                 "status": task["status"],
                 "current_song": task["current_song"],
+                "dirname": task.get("dirname", ""),
+                "task_type": task.get("task_type", ""),
             }
         else:
             return {"ret": "Not found", "task_id": task_id}

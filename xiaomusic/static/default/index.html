@@ -161,12 +161,65 @@
                     <span class="material-icons" aria-hidden="true">ondemand_video</span>
                     <p>B站搜索</p>
                 </div>
+                <div onclick="togglePlaylistDownload()" class="icon-item device-enable" role="button" aria-label="歌单批量下载" tabindex="0">
+                    <span class="material-icons" aria-hidden="true">playlist_add</span>
+                    <p>歌单下载</p>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 弹窗遮罩层 -->
     <div class="component-overlay" id="component-overlay" onclick="closeAllDialogs()"></div>
+
+    <!-- 歌单批量下载组件 -->
+    <div class="component" id="playlist-download-component" role="dialog" aria-modal="true" aria-labelledby="playlist-download-title" style="max-width: 540px; width: 92%;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h2 id="playlist-download-title" style="margin: 0; font-size: 18px;">📂 歌单批量下载</h2>
+            <a href="/static/default/downloadtool.html" target="_blank" style="font-size: 13px; color: #007bff; text-decoration: underline;">📥 打开独立下载工具</a>
+        </div>
+        
+        <div style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 12px; color: #666; margin-bottom: 10px; line-height: 1.4;">
+                💡 <b>支持范围</b>：B站视频合集/多P/收藏夹、YouTube歌单。单次处理一个歌单，实时显示下载进度。
+            </div>
+            
+            <div style="margin-bottom: 10px;">
+                <label for="home-playlist-url" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #333;">歌单 URL：</label>
+                <input type="text" id="home-playlist-url" class="search-input" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="输入或粘贴歌单链接 (如 https://m.bilibili.com/video/BV1WUsDezE88)">
+            </div>
+            
+            <div style="margin-bottom: 12px;">
+                <label for="home-playlist-dirname" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #333;">保存歌单名称：</label>
+                <input type="text" id="home-playlist-dirname" class="search-input" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="例如：流行热歌">
+            </div>
+
+            <button id="home-playlist-download-btn" onclick="submitHomePlaylistDownload()" style="width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">
+                📥 开始下载歌单
+            </button>
+        </div>
+
+        <div id="home-playlist-status-msg" style="font-size: 13px; min-height: 18px; margin-bottom: 8px;"></div>
+
+        <!-- 实时进度卡片 -->
+        <div id="home-playlist-progress-box" style="display: none; padding: 12px; border: 1px solid #cce5ff; border-radius: 8px; background: #f0f7ff; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span id="home-playlist-progress-title" style="font-size: 13px; font-weight: bold; color: #004085;">⏳ 歌单下载中...</span>
+                <span id="home-playlist-progress-percent" style="font-size: 14px; font-weight: bold; color: #007bff;">0%</span>
+            </div>
+            <div style="width: 100%; height: 8px; background: #e2e6ea; border-radius: 4px; overflow: hidden; margin-bottom: 8px;">
+                <div id="home-playlist-progress-bar" style="width: 0%; height: 100%; background: #007bff; border-radius: 4px; transition: width 0.3s ease;"></div>
+            </div>
+            <div style="font-size: 12px; color: #495057; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px;">
+                <span id="home-playlist-current-song">准备中...</span>
+                <span id="home-playlist-count">已完成: 0 / 0</span>
+            </div>
+        </div>
+
+        <div class="component-button-one">
+            <button onclick="togglePlaylistDownload()" class="close-button">关闭</button>
+        </div>
+    </div>
 
     <!-- B站搜索与下载组件 -->
     <div class="component" id="bili-search-component" role="dialog" aria-modal="true" aria-labelledby="bili-search-title" style="max-width: 540px; width: 92%;">

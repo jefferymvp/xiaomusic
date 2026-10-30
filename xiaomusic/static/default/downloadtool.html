@@ -1,106 +1,610 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 
 <head>
 	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width">
-	<title>歌曲下载工具</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>歌曲与歌单下载工具 - XiaoMusic</title>
 	<link rel="stylesheet" type="text/css" href="./main.css?version=1780982533">
 	<script src="./jquery-3.7.1.min.js?version=1780982533"></script>
+	<style>
+		:root {
+			--primary: #007bff;
+			--primary-hover: #0056b3;
+			--success: #28a745;
+			--warning: #ffc107;
+			--danger: #dc3545;
+			--bg-card: #ffffff;
+			--border-color: #e5e9f2;
+			--text-main: #2c3e50;
+			--text-muted: #7f8c8d;
+		}
 
+		body {
+			background: linear-gradient(135deg, #f5f7fa 0%, #eef2f7 100%);
+			margin: 0;
+			padding: 20px 16px;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			color: var(--text-main);
+			min-height: 100vh;
+			box-sizing: border-box;
+		}
 
+		.container {
+			max-width: 680px;
+			margin: 0 auto;
+		}
 
+		.header-bar {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 20px;
+		}
+
+		.page-title {
+			margin: 0;
+			font-size: 22px;
+			font-weight: 700;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.btn-back-home {
+			display: inline-flex;
+			align-items: center;
+			gap: 6px;
+			padding: 7px 14px;
+			background: #ffffff;
+			color: var(--primary);
+			border: 1px solid var(--border-color);
+			border-radius: 8px;
+			text-decoration: none;
+			font-size: 14px;
+			font-weight: 500;
+			box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+			transition: all 0.2s ease;
+		}
+
+		.btn-back-home:hover {
+			background: var(--primary);
+			color: #ffffff;
+			border-color: var(--primary);
+			transform: translateY(-1px);
+			box-shadow: 0 4px 8px rgba(0, 123, 255, 0.2);
+		}
+
+		.card {
+			background: var(--bg-card);
+			border-radius: 12px;
+			padding: 20px 22px;
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+			border: 1px solid var(--border-color);
+			margin-bottom: 20px;
+			transition: box-shadow 0.2s;
+		}
+
+		.card:hover {
+			box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+		}
+
+		.card-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			margin-bottom: 14px;
+			padding-bottom: 10px;
+			border-bottom: 1px solid #f0f2f5;
+		}
+
+		.card-title {
+			margin: 0;
+			font-size: 17px;
+			font-weight: 600;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+		}
+
+		.badge-rule {
+			background: #e8f4fd;
+			color: #1976d2;
+			font-size: 12px;
+			padding: 2px 8px;
+			border-radius: 12px;
+			font-weight: 500;
+		}
+
+		.form-group {
+			margin-bottom: 14px;
+		}
+
+		.form-label {
+			display: block;
+			font-size: 13px;
+			font-weight: 600;
+			margin-bottom: 6px;
+			color: #4a5568;
+		}
+
+		.form-input {
+			width: 100%;
+			padding: 10px 12px;
+			font-size: 14px;
+			border: 1px solid #d2d6dc;
+			border-radius: 8px;
+			box-sizing: border-box;
+			outline: none;
+			transition: all 0.2s ease;
+			background: #fbfcfe;
+		}
+
+		.form-input:focus {
+			border-color: var(--primary);
+			background: #ffffff;
+			box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+		}
+
+		.btn-submit {
+			width: 100%;
+			padding: 11px;
+			background: var(--primary);
+			color: #ffffff;
+			border: none;
+			border-radius: 8px;
+			font-size: 15px;
+			font-weight: 600;
+			cursor: pointer;
+			transition: all 0.2s;
+			box-shadow: 0 2px 6px rgba(0, 123, 255, 0.25);
+		}
+
+		.btn-submit:hover:not(:disabled) {
+			background: var(--primary-hover);
+			transform: translateY(-1px);
+			box-shadow: 0 4px 10px rgba(0, 123, 255, 0.35);
+		}
+
+		.btn-submit:disabled {
+			background: #a0aec0;
+			cursor: not-allowed;
+			box-shadow: none;
+			transform: none;
+		}
+
+		.progress-container {
+			display: none;
+			background: #f4f8fc;
+			border: 1px solid #d0e4f7;
+			border-radius: 10px;
+			padding: 14px;
+			margin-top: 16px;
+		}
+
+		.progress-head {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 8px;
+		}
+
+		.progress-title {
+			font-size: 14px;
+			font-weight: 600;
+			color: #0b4f8c;
+		}
+
+		.progress-percent {
+			font-size: 15px;
+			font-weight: 700;
+			color: var(--primary);
+		}
+
+		.progress-track {
+			width: 100%;
+			height: 8px;
+			background: #e2e8f0;
+			border-radius: 4px;
+			overflow: hidden;
+			margin-bottom: 8px;
+		}
+
+		.progress-bar-fill {
+			height: 100%;
+			width: 0%;
+			background: linear-gradient(90deg, #007bff 0%, #00b4d8 100%);
+			border-radius: 4px;
+			transition: width 0.3s ease;
+		}
+
+		.progress-details {
+			font-size: 12px;
+			color: #64748b;
+			display: flex;
+			justify-content: space-between;
+			flex-wrap: wrap;
+			gap: 6px;
+		}
+
+		.status-msg {
+			font-size: 13px;
+			margin-top: 10px;
+			min-height: 18px;
+		}
+
+		.info-box {
+			background: #f8fafc;
+			border-left: 4px solid var(--primary);
+			padding: 12px 14px;
+			border-radius: 6px;
+			font-size: 13px;
+			color: #64748b;
+			line-height: 1.6;
+		}
+
+		.info-box ul {
+			margin: 6px 0 0 16px;
+			padding: 0;
+		}
+
+		.info-box li {
+			margin-bottom: 4px;
+		}
+	</style>
 </head>
 
 <body>
+	<div class="container">
+		<!-- 顶部导航 -->
+		<div class="header-bar">
+			<h1 class="page-title">
+				<span>🎵</span> 歌曲与歌单下载工具
+			</h1>
+			<a href="/static/default/index.html" class="btn-back-home">
+				<span>⬅️</span> 返回首页
+			</a>
+		</div>
 
-	<h1>歌曲下载工具</h1>
+		<!-- 歌单下载卡片 (一次处理一个歌单) -->
+		<div class="card" id="playlist-card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<span>📁</span> 歌单批量下载
+				</h2>
+				<span class="badge-rule">一次处理一个歌单</span>
+			</div>
 
-	<div class="rows">
-		<!-- 歌单的输入 -->
-		<label for="playlistUrl">输入歌单 URL:</label>
-		<input type="text" id="playlistUrl" value="https://m.bilibili.com/video/BV1WUsDezE88">
+			<div class="form-group">
+				<label for="playlistUrl" class="form-label">输入歌单 URL：</label>
+				<input type="text" id="playlistUrl" class="form-input" value="https://m.bilibili.com/video/BV1WUsDezE88"
+					placeholder="支持 B站视频合集/收藏夹、YouTube歌单">
+			</div>
 
-		<label for="dirname">输入歌单名字:</label>
-		<input type="text" id="dirname" placeholder="流行歌曲">
+			<div class="form-group">
+				<label for="dirname" class="form-label">保存歌单名称：</label>
+				<input type="text" id="dirname" class="form-input" placeholder="例如：流行经典 (自动在此目录下分类)">
+			</div>
 
-		<button id="downloadPlaylistBtn">下载歌单</button>
+			<button id="downloadPlaylistBtn" class="btn-submit">📥 立即下载歌单</button>
 
+			<div id="playlistStatusMsg" class="status-msg"></div>
+
+			<!-- 歌单实时下载进度卡片 -->
+			<div id="playlistProgressBox" class="progress-container">
+				<div class="progress-head">
+					<span id="playlistProgressTitle" class="progress-title">⏳ 正在初始化歌单...</span>
+					<span id="playlistProgressPercent" class="progress-percent">0%</span>
+				</div>
+				<div class="progress-track">
+					<div id="playlistProgressBar" class="progress-bar-fill"></div>
+				</div>
+				<div class="progress-details">
+					<span id="playlistCurrentSong">正在准备...</span>
+					<span id="playlistSongCount">已完成: 0 / 0</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- 单曲下载卡片 -->
+		<div class="card" id="song-card">
+			<div class="card-header">
+				<h2 class="card-title">
+					<span>🎧</span> 单曲下载
+				</h2>
+			</div>
+
+			<div class="form-group">
+				<label for="songUrl" class="form-label">输入歌曲 URL：</label>
+				<input type="text" id="songUrl" class="form-input" value="https://m.bilibili.com/video/BV1qD4y1U7fs"
+					placeholder="输入单曲视频或音频链接">
+			</div>
+
+			<div class="form-group">
+				<label for="songName" class="form-label">输入歌曲名字：</label>
+				<input type="text" id="songName" class="form-input" placeholder="歌曲保存文件名">
+			</div>
+
+			<button id="downloadSongBtn" class="btn-submit">📥 立即下载单曲</button>
+
+			<div id="songStatusMsg" class="status-msg"></div>
+
+			<!-- 单曲实时下载进度卡片 -->
+			<div id="songProgressBox" class="progress-container">
+				<div class="progress-head">
+					<span id="songProgressTitle" class="progress-title">⏳ 正在下载音频流并转码...</span>
+					<span id="songProgressPercent" class="progress-percent">0%</span>
+				</div>
+				<div class="progress-track">
+					<div id="songProgressBar" class="progress-bar-fill"></div>
+				</div>
+				<div class="progress-details">
+					<span id="songCurrentInfo">处理中...</span>
+					<span>单曲任务</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- 使用指南说明卡片 -->
+		<div class="card">
+			<div class="info-box">
+				<strong>💡 使用说明与技巧：</strong>
+				<ul>
+					<li><b>歌单互斥保障</b>：为了保证系统性能与转码稳定，系统同一时间仅处理一个歌单下载任务。</li>
+					<li><b>智能粘贴填充</b>：复制带有链接和歌名的文字直接在输入框粘贴，系统将自动识别并分别提取。</li>
+					<li><b>歌单支持格式</b>：B站视频选集（多P）、B站合集、B站收藏夹、YouTube播放列表链接。</li>
+					<li><b>下载完成通知</b>：下载完成后会自动存入本地曲库，并同步刷新首页歌单。</li>
+				</ul>
+			</div>
+		</div>
 	</div>
-
-	<hr>
-
-	<div class="rows">
-
-		<!-- 单曲的输入 -->
-		<label for="songUrl">输入歌曲 URL:</label>
-		<input type="text" id="songUrl" value="https://m.bilibili.com/video/BV1qD4y1U7fs">
-
-		<label for="songName">输入歌曲名字:</label>
-		<input type="text" id="songName" placeholder="歌曲名">
-
-		<button id="downloadSongBtn">下载单曲</button>
-	</div>
-
 
 	<script>
-		// 下载歌单
+		let playlistPollTimer = null;
+		let songPollTimer = null;
+
+		// 页面初始化时检查是否有正在运行的歌单任务
+		$(document).ready(function () {
+			checkActivePlaylist();
+		});
+
+		function checkActivePlaylist() {
+			$.ajax({
+				type: "GET",
+				url: "/api/download/active_playlist",
+				dataType: "json",
+				success: function (res) {
+					if (res && res.ret === "OK" && res.has_active && res.task) {
+						const task = res.task;
+						if (task.dirname && !$('#dirname').val()) {
+							$('#dirname').val(task.dirname);
+						}
+						$('#playlistStatusMsg').html('<span style="color: #007bff;">ℹ️ 检测到歌单【' + (task.dirname || "下载任务") + '】正在进行中，已自动接入进度监控：</span>');
+						startPlaylistProgressPolling(task.task_id, task.dirname);
+					}
+				}
+			});
+		}
+
+		// 歌单下载提交
 		$('#downloadPlaylistBtn').click(function () {
-			var playlistUrl = $('#playlistUrl').val();
-			var dirname = $('#dirname').val();
+			const playlistUrl = $('#playlistUrl').val().trim();
+			const dirname = $('#dirname').val().trim();
+			const statusMsg = $('#playlistStatusMsg');
+			const btn = $('#downloadPlaylistBtn');
 
 			if (!playlistUrl || !dirname) {
-				alert('请填写完整的歌单 URL 和歌单名字');
+				statusMsg.html('<span style="color: #e67e22;">⚠️ 请填写完整的歌单 URL 和保存歌单名字</span>');
 				return;
 			}
 
-			var data = {
-				dirname: dirname,
-				url: playlistUrl
-			};
+			btn.prop("disabled", true).text("提交歌单任务中...").css("background", "#6c757d");
+			statusMsg.html('<span style="color: #007bff;">⏳ 正在向后端提交任务并获取歌单结构...</span>');
+
 			$.ajax({
 				type: "POST",
 				url: "/downloadplaylist",
-				contentType: "application/json",
-				data: JSON.stringify(data),
-				success: (msg) => {
-					alert('歌单下载请求已发送!');
-					console.log(response);
+				contentType: "application/json; charset=utf-8",
+				data: JSON.stringify({
+					dirname: dirname,
+					url: playlistUrl
+				}),
+				success: function (res) {
+					if (res.ret === "BUSY") {
+						statusMsg.html('<span style="color: #e67e22;">⚠️ ' + (res.msg || "已有歌单正在下载中") + '</span>');
+						if (res.task_id) {
+							startPlaylistProgressPolling(res.task_id, res.dirname || dirname);
+						} else {
+							btn.prop("disabled", false).text("📥 立即下载歌单").css("background", "#007bff");
+						}
+						return;
+					}
+
+					if (res.ret !== "OK" || !res.task_id) {
+						statusMsg.html('<span style="color: #dc3545;">❌ 启动歌单下载失败: ' + (res.msg || "未知错误") + '</span>');
+						btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+						return;
+					}
+
+					statusMsg.html('<span style="color: #28a745;">✅ 歌单下载任务已启动，正在实时抓取...</span>');
+					startPlaylistProgressPolling(res.task_id, dirname);
 				},
-				error: (msg) => {
-					alert('歌单下载请求失败，请重试。');
+				error: function () {
+					statusMsg.html('<span style="color: #dc3545;">❌ 请求失败，请检查网络或后端服务</span>');
+					btn.prop("disabled", false).text("重试").css("background", "#dc3545");
 				}
 			});
 		});
 
-		// 下载单曲
+		function startPlaylistProgressPolling(taskId, dirname) {
+			if (playlistPollTimer) {
+				clearInterval(playlistPollTimer);
+				playlistPollTimer = null;
+			}
+
+			const btn = $('#downloadPlaylistBtn');
+			const box = $('#playlistProgressBox');
+			const pTitle = $('#playlistProgressTitle');
+			const pPercent = $('#playlistProgressPercent');
+			const pBar = $('#playlistProgressBar');
+			const pCurrent = $('#playlistCurrentSong');
+			const pCount = $('#playlistSongCount');
+			const statusMsg = $('#playlistStatusMsg');
+
+			btn.prop("disabled", true).text("歌单下载中 (一次仅处理一个歌单)...").css("background", "#6c757d");
+			box.show();
+			pBar.css({ background: "linear-gradient(90deg, #007bff 0%, #00b4d8 100%)" });
+			pTitle.text("⏳ 歌单【" + (dirname || "当前歌单") + "】正在下载...");
+
+			playlistPollTimer = setInterval(function () {
+				$.ajax({
+					type: "GET",
+					url: "/download_progress?task_id=" + encodeURIComponent(taskId),
+					dataType: "json",
+					success: function (progRes) {
+						if (progRes.ret !== "OK") return;
+
+						const status = progRes.status;
+						const total = progRes.total || 0;
+						const completed = progRes.completed || 0;
+						let progress = progRes.progress || 0;
+						const currentSong = progRes.current_song || "";
+
+						if (status === "downloading" || status === "pending") {
+							if (progress === 0 && total === 0) {
+								pBar.css("width", "15%");
+								pPercent.text("解析中...");
+								pCurrent.text(currentSong || "正在解析歌单元信息...");
+								pCount.text("准备中");
+							} else {
+								pBar.css("width", Math.max(progress, 5) + "%");
+								pPercent.text(progress + "%");
+								pCurrent.text(currentSong ? "正在抓取: " + currentSong : "下载中...");
+								pCount.text("已完成: " + completed + " / " + total);
+							}
+						} else if (status === "completed") {
+							clearInterval(playlistPollTimer);
+							playlistPollTimer = null;
+
+							pBar.css({ width: "100%", background: "#28a745" });
+							pPercent.text("100%");
+							pTitle.html('<span style="color: #28a745;">🎉 歌单全部下载完成！</span>');
+							pCurrent.text("已成功存入本地音乐库");
+							pCount.text("共 " + (completed || total) + " 首");
+							statusMsg.html('<span style="color: #28a745; font-weight: bold;">🎉 歌单【' + (dirname || "") + '】下载完成，本地曲库已自动同步刷新！</span>');
+
+							btn.prop("disabled", false).text("📥 下载新歌单").css("background", "#007bff");
+						} else if (status === "failed") {
+							clearInterval(playlistPollTimer);
+							playlistPollTimer = null;
+
+							pBar.css({ width: "100%", background: "#dc3545" });
+							pTitle.html('<span style="color: #dc3545;">❌ 歌单下载失败</span>');
+							pCurrent.text(currentSong || "未知原因");
+							statusMsg.html('<span style="color: #dc3545;">❌ 下载中断: ' + (currentSong || "处理失败") + '</span>');
+							btn.prop("disabled", false).text("重新尝试").css("background", "#dc3545");
+						}
+					},
+					error: function () {
+						// 网络抖动，继续轮询
+					}
+				});
+			}, 1200);
+		}
+
+		// 单曲下载
 		$('#downloadSongBtn').click(function () {
-			var songName = $('#songName').val();
-			var songUrl = $('#songUrl').val();
+			const songName = $('#songName').val().trim();
+			const songUrl = $('#songUrl').val().trim();
+			const statusMsg = $('#songStatusMsg');
+			const btn = $('#downloadSongBtn');
+			const box = $('#songProgressBox');
+			const pTitle = $('#songProgressTitle');
+			const pPercent = $('#songProgressPercent');
+			const pBar = $('#songProgressBar');
+			const pCurrent = $('#songCurrentInfo');
 
 			if (!songUrl || !songName) {
-				alert('请填写完整的歌曲 URL 和歌曲名字');
+				statusMsg.html('<span style="color: #e67e22;">⚠️ 请填写完整的歌曲 URL 和歌曲名字</span>');
 				return;
 			}
 
-			var data = {
-				name: songName,
-				url: songUrl
-			};
+			btn.prop("disabled", true).text("提交中...").css("background", "#6c757d");
+			box.show();
+			pBar.css({ width: "10%", background: "#007bff" });
+			pPercent.text("10%");
+			pTitle.text("⏳ 正在请求后端创建单曲下载任务...");
+
 			$.ajax({
 				type: "POST",
 				url: "/downloadonemusic",
-				contentType: "application/json",
-				data: JSON.stringify(data),
-				success: (msg) => {
-					alert('单曲下载请求已发送!');
-					console.log(msg);
+				contentType: "application/json; charset=utf-8",
+				data: JSON.stringify({
+					name: songName,
+					url: songUrl
+				}),
+				success: function (res) {
+					if (res.ret !== "OK" || !res.task_id) {
+						statusMsg.html('<span style="color: #dc3545;">❌ 启动单曲下载失败</span>');
+						btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+						return;
+					}
+
+					const taskId = res.task_id;
+					let currentProgress = 20;
+					pTitle.text("⏳ 正在下载音频流并转码...");
+					pBar.css("width", currentProgress + "%");
+					pPercent.text(currentProgress + "%");
+					pCurrent.text(songName);
+
+					if (songPollTimer) clearInterval(songPollTimer);
+
+					songPollTimer = setInterval(function () {
+						$.ajax({
+							type: "GET",
+							url: "/download_progress?task_id=" + encodeURIComponent(taskId),
+							dataType: "json",
+							success: function (progRes) {
+								if (progRes.ret !== "OK") return;
+
+								const status = progRes.status;
+								const curMsg = progRes.current_song || "";
+
+								if (status === "downloading" || status === "pending") {
+									if (currentProgress < 85) currentProgress += 5;
+									pBar.css("width", currentProgress + "%");
+									pPercent.text(currentProgress + "%");
+									pCurrent.text(curMsg || "处理中...");
+								} else if (status === "completed") {
+									clearInterval(songPollTimer);
+									songPollTimer = null;
+									pBar.css({ width: "100%", background: "#28a745" });
+									pPercent.text("100%");
+									pTitle.html('<span style="color: #28a745;">🎉 单曲下载完成！</span>');
+									pCurrent.text("已存入本地歌曲库");
+									statusMsg.html('<span style="color: #28a745; font-weight: bold;">🎉 【' + songName + '】下载完成！</span>');
+									btn.prop("disabled", false).text("📥 继续下载单曲").css("background", "#007bff");
+								} else if (status === "failed") {
+									clearInterval(songPollTimer);
+									songPollTimer = null;
+									pBar.css({ width: "100%", background: "#dc3545" });
+									pTitle.html('<span style="color: #dc3545;">❌ 下载失败</span>');
+									pCurrent.text(curMsg || "未知错误");
+									statusMsg.html('<span style="color: #dc3545;">❌ 下载失败: ' + (curMsg || "未知错误") + '</span>');
+									btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+								}
+							}
+						});
+					}, 1200);
 				},
-				error: (msg) => {
-					alert('单曲下载请求失败，请重试。');
+				error: function () {
+					statusMsg.html('<span style="color: #dc3545;">❌ 下载请求发生网络错误</span>');
+					btn.prop("disabled", false).text("重试").css("background", "#dc3545");
 				}
 			});
 		});
+
+		// 剪贴板自动解析
 		function parseClipboardText(text) {
 			const match = text.match(/(https?:\/\/\S+)/);
 			if (!match) return null;
@@ -116,29 +620,22 @@
 
 		$('#songUrl, #songName').on('paste', function (e) {
 			const pastedText = (e.originalEvent || e).clipboardData.getData('text');
-
 			const parsed = parseClipboardText(pastedText);
 			if (!parsed) return;
-
 			e.preventDefault();
-
 			$('#songUrl').val(parsed.url);
-			$('#songName').val(parsed.name);
+			if (parsed.name) $('#songName').val(parsed.name);
 		});
 
 		$('#playlistUrl, #dirname').on('paste', function (e) {
 			const pastedText = (e.originalEvent || e).clipboardData.getData('text');
-
 			const parsed = parseClipboardText(pastedText);
 			if (!parsed) return;
-
 			e.preventDefault();
-
 			$('#playlistUrl').val(parsed.url);
-			$('#dirname').val(parsed.name);
+			if (parsed.name) $('#dirname').val(parsed.name);
 		});
 	</script>
-
 </body>
 
 </html>

@@ -2206,3 +2206,187 @@ function doBiliSearch() {
     }
   });
 }
+
+/* ================== 歌单批量下载功能 (一次处理一个歌单) ================== */
+let homePlaylistPollTimer = null;
+
+function togglePlaylistDownload() {
+  const isVisible = $("#playlist-download-component").is(":visible");
+  if (isVisible) {
+    closeDialog("playlist-download-component");
+  } else {
+    openDialog("playlist-download-component");
+    checkActivePlaylistDownload();
+  }
+}
+
+// 检查当前是否有正在执行的歌单下载任务
+function checkActivePlaylistDownload() {
+  $.ajax({
+    type: "GET",
+    url: "/api/download/active_playlist",
+    dataType: "json",
+    success: function (res) {
+      if (res && res.ret === "OK" && res.has_active && res.task) {
+        const t = res.task;
+        if (t.dirname && !$("#home-playlist-dirname").val()) {
+          $("#home-playlist-dirname").val(t.dirname);
+        }
+        $("#home-playlist-status-msg").html('<span style="color: #007bff;">ℹ️ 检测到歌单【' + (t.dirname || "下载任务") + '】正在进行中，已自动接入进度监控：</span>');
+        startPlaylistProgressPolling(t.task_id, t.dirname);
+      }
+    }
+  });
+}
+
+function submitHomePlaylistDownload() {
+  const url = $("#home-playlist-url").val().trim();
+  const dirname = $("#home-playlist-dirname").val().trim();
+  const statusMsg = $("#home-playlist-status-msg");
+  const btn = $("#home-playlist-download-btn");
+
+  if (!url || !dirname) {
+    statusMsg.html('<span style="color: #e67e22;">⚠️ 请填写完整的歌单 URL 与保存歌单名字</span>');
+    return;
+  }
+
+  btn.prop("disabled", true).text("提交请求中...").css("background", "#6c757d");
+  statusMsg.html('<span style="color: #007bff;">⏳ 正在请求后端创建歌单下载任务并解析...</span>');
+
+  $.ajax({
+    type: "POST",
+    url: "/downloadplaylist",
+    contentType: "application/json; charset=utf-8",
+    data: JSON.stringify({
+      url: url,
+      dirname: dirname
+    }),
+    success: function (res) {
+      if (res.ret === "BUSY") {
+        statusMsg.html('<span style="color: #e67e22;">⚠️ ' + (res.msg || "已有歌单正在下载中") + '</span>');
+        if (res.task_id) {
+          startPlaylistProgressPolling(res.task_id, res.dirname || dirname);
+        } else {
+          btn.prop("disabled", false).text("📥 开始下载歌单").css("background", "#007bff");
+        }
+        return;
+      }
+
+      if (res.ret !== "OK" || !res.task_id) {
+        statusMsg.html('<span style="color: #dc3545;">❌ 启动歌单下载失败: ' + (res.msg || "未知错误") + '</span>');
+        btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+        return;
+      }
+
+      statusMsg.html('<span style="color: #28a745;">✅ 歌单任务创建成功，正在下载中...</span>');
+      startPlaylistProgressPolling(res.task_id, dirname);
+    },
+    error: function () {
+      statusMsg.html('<span style="color: #dc3545;">❌ 请求失败，请检查网络或后端服务连接</span>');
+      btn.prop("disabled", false).text("重试").css("background", "#dc3545");
+    }
+  });
+}
+
+function startPlaylistProgressPolling(taskId, dirname) {
+  if (homePlaylistPollTimer) {
+    clearInterval(homePlaylistPollTimer);
+    homePlaylistPollTimer = null;
+  }
+
+  const btn = $("#home-playlist-download-btn");
+  const box = $("#home-playlist-progress-box");
+  const pTitle = $("#home-playlist-progress-title");
+  const pPercent = $("#home-playlist-progress-percent");
+  const pBar = $("#home-playlist-progress-bar");
+  const pCurrent = $("#home-playlist-current-song");
+  const pCount = $("#home-playlist-count");
+  const statusMsg = $("#home-playlist-status-msg");
+
+  btn.prop("disabled", true).text("歌单下载中 (请勿重复提交)...").css("background", "#6c757d");
+  box.show();
+  pBar.css({ background: "#007bff" });
+  pTitle.text("⏳ 歌单【" + (dirname || "当前歌单") + "】正在下载...");
+
+  homePlaylistPollTimer = setInterval(function () {
+    $.ajax({
+      type: "GET",
+      url: "/download_progress?task_id=" + encodeURIComponent(taskId),
+      dataType: "json",
+      success: function (progRes) {
+        if (progRes.ret !== "OK") return;
+
+        const status = progRes.status;
+        const total = progRes.total || 0;
+        const completed = progRes.completed || 0;
+        let progress = progRes.progress || 0;
+        const currentSong = progRes.current_song || "";
+
+        if (status === "downloading" || status === "pending") {
+          if (progress === 0 && total === 0) {
+            pBar.css("width", "15%");
+            pPercent.text("解析中...");
+            pCurrent.text(currentSong || "正在解析歌单元信息...");
+            pCount.text("准备中");
+          } else {
+            pBar.css("width", Math.max(progress, 5) + "%");
+            pPercent.text(progress + "%");
+            pCurrent.text(currentSong ? "正在抓取: " + currentSong : "下载中...");
+            pCount.text("已完成: " + completed + " / " + total);
+          }
+        } else if (status === "completed") {
+          clearInterval(homePlaylistPollTimer);
+          homePlaylistPollTimer = null;
+
+          pBar.css({ width: "100%", background: "#28a745" });
+          pPercent.text("100%");
+          pTitle.html('<span style="color: #28a745;">🎉 歌单下载完成！</span>');
+          pCurrent.text("全部歌曲已存入本地下载目录");
+          pCount.text("共 " + (completed || total) + " 首");
+          statusMsg.html('<span style="color: #28a745; font-weight: bold;">🎉 歌单【' + (dirname || "") + '】已成功下载完成并加入本地曲库！</span>');
+
+          btn.prop("disabled", false).text("📥 下载新歌单").css("background", "#007bff");
+
+          // 刷新主页曲库
+          if (typeof sendcmd === "function") {
+            sendcmd("gen_music_list");
+          }
+        } else if (status === "failed") {
+          clearInterval(homePlaylistPollTimer);
+          homePlaylistPollTimer = null;
+
+          pBar.css({ width: "100%", background: "#dc3545" });
+          pTitle.html('<span style="color: #dc3545;">❌ 歌单下载失败</span>');
+          pCurrent.text(currentSong || "未知原因");
+          statusMsg.html('<span style="color: #dc3545;">❌ 下载中断: ' + (currentSong || "失败") + '</span>');
+          btn.prop("disabled", false).text("重新尝试").css("background", "#dc3545");
+        }
+      },
+      error: function () {
+        // 网络抖动，继续轮询
+      }
+    });
+  }, 1200);
+}
+
+// 智能粘贴事件处理
+$(document).ready(function () {
+  function parseClipboard(text) {
+    const match = text.match(/(https?:\/\/\S+)/);
+    if (!match) return null;
+    const url = match[1];
+    const name = text.replace(url, "").replace(/[【】]/g, "").trim();
+    return { name, url };
+  }
+
+  $("#home-playlist-url, #home-playlist-dirname").on("paste", function (e) {
+    const pastedText = (e.originalEvent || e).clipboardData.getData("text");
+    const parsed = parseClipboard(pastedText);
+    if (!parsed) return;
+    e.preventDefault();
+    $("#home-playlist-url").val(parsed.url);
+    if (parsed.name) {
+      $("#home-playlist-dirname").val(parsed.name);
+    }
+  });
+});

@@ -28,16 +28,17 @@ class ServerConfigManager(context: Context) {
 
         const val DID_LOCAL = "web_device"
         const val DEFAULT_LOCAL_NAME = "本机 (当前手机)"
-        private const val DEFAULT_HOST = "192.168.6.114"
-        private const val OLD_DEFAULT_HOST = "192.168.6.58"
+        private const val DEFAULT_HOST = "192.168.1.175"
+        private const val OLD_DEFAULT_HOST_1 = "192.168.6.114"
+        private const val OLD_DEFAULT_HOST_2 = "192.168.6.58"
         private const val DEFAULT_PORT = 58090
     }
 
     var host: String
         get() {
             val saved = prefs.getString(KEY_HOST, DEFAULT_HOST) ?: DEFAULT_HOST
-            if (saved == OLD_DEFAULT_HOST) {
-                // 自动平滑升级为新的默认 IP 192.168.6.114
+            if (saved == OLD_DEFAULT_HOST_1 || saved == OLD_DEFAULT_HOST_2) {
+                // 自动平滑升级为当前宿主机实际 IP 192.168.1.175
                 prefs.edit().putString(KEY_HOST, DEFAULT_HOST).apply()
                 return DEFAULT_HOST
             }

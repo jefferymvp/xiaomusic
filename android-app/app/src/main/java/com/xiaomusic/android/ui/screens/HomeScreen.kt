@@ -5,19 +5,19 @@ import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Speaker
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,7 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,8 +35,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xiaomusic.android.XiaoMusicApplication
-import com.xiaomusic.android.data.PlayMusicRequest
+import com.xiaomusic.android.data.CreatePlaylistRequest
+import com.xiaomusic.android.data.PlaylistMusicRequest
 import com.xiaomusic.android.data.ServerConfigManager
+import com.xiaomusic.android.ui.components.VoiceControlDialog
 import com.xiaomusic.android.ui.theme.TealPrimary
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
@@ -49,23 +53,34 @@ class HomeViewModel : ViewModel() {
     var errorMsg by mutableStateOf<String?>(null)
     var hasLoaded by mutableStateOf(false)
 
-    fun loadMusic(config: ServerConfigManager, forceRefresh: Boolean = false) {
+    fun loadMusic(
+        config: ServerConfigManager,
+        forceRefresh: Boolean = false,
+        onSuccess: ((total: Int) -> Unit)? = null,
+        onError: ((err: String) -> Unit)? = null
+    ) {
         isLoading = true
         errorMsg = null
         viewModelScope.launch {
             try {
                 val api = config.getApiService()
                 if (forceRefresh) {
+                    // 主动调用后端扫描磁盘接口
                     api.refreshMusicList()
                 }
-                val map = api.getMusicList()
+                // 获取最新音乐列表
+                val map = api.getMusicList(refresh = forceRefresh)
                 musicMap = map
                 if (!map.containsKey(selectedPlaylist) && map.isNotEmpty()) {
                     selectedPlaylist = map.keys.first()
                 }
                 hasLoaded = true
+                val total = map.values.flatten().toSet().size
+                onSuccess?.invoke(total)
             } catch (e: Exception) {
-                errorMsg = "加载歌曲失败: ${e.localizedMessage}"
+                val msg = "加载歌曲失败: ${e.localizedMessage}"
+                errorMsg = msg
+                onError?.invoke(msg)
             } finally {
                 isLoading = false
             }
@@ -73,15 +88,28 @@ class HomeViewModel : ViewModel() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
+fun HomeScreen(
+    viewModel: HomeViewModel = viewModel(),
+    onNavigateToDownload: ((keyword: String) -> Unit)? = null
+) {
     val context = LocalContext.current
     val config = XiaoMusicApplication.instance.serverConfig
     val player = XiaoMusicApplication.instance.playerManager
     val scope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
     val currentDevice by config.currentDeviceState.collectAsState()
+
+    // 搜索关键字
+    var searchQuery by remember { mutableStateOf("") }
+
+    // 长按歌曲指定歌单的弹窗目标歌曲
+    var songForPlaylistDialog by remember { mutableStateOf<String?>(null) }
+
+    // 语音控制弹窗状态
+    var showVoiceDialog by remember { mutableStateOf(false) }
 
     // 仅在首次进入或列表为空时自动加载
     LaunchedEffect(Unit) {
@@ -95,6 +123,21 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         if (!currentDevice.isLocal) {
             player.startDevicePolling(currentDevice.did, currentDevice.name)
         }
+    }
+
+    // 触发重新扫描磁盘并刷新
+    fun triggerDiskRescan() {
+        Toast.makeText(context, "⏳ 正在通知服务端重新扫描磁盘曲库...", Toast.LENGTH_SHORT).show()
+        viewModel.loadMusic(
+            config = config,
+            forceRefresh = true,
+            onSuccess = { total ->
+                Toast.makeText(context, "✅ 磁盘扫描完成，当前曲库共 $total 首歌曲", Toast.LENGTH_SHORT).show()
+            },
+            onError = { err ->
+                Toast.makeText(context, "❌ 刷新失败: $err", Toast.LENGTH_LONG).show()
+            }
+        )
     }
 
     // 播放歌曲（手机本机 或 投送小爱音箱）
@@ -126,7 +169,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                     Toast.makeText(
                         context,
                         "🔊 已投送至【${currentDevice.name}】播放:\n$name",
-                        Toast.LENGTH_LONG
+                        Toast.LENGTH_SHORT
                     ).show()
                 }
             } catch (e: Exception) {
@@ -135,7 +178,7 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
         }
     }
 
-    // 下载歌曲到手机本地（使用系统 DownloadManager 保存到公共 Downloads 目录）
+    // 下载歌曲到手机本地
     fun downloadSongToPhone(name: String) {
         scope.launch {
             try {
@@ -177,8 +220,8 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                 downloadManager.enqueue(request)
                 Toast.makeText(
                     context,
-                    "📥 已开始下载至手机【下载】目录：\n$fileName\n完成后可在通知栏或文件管理器查看",
-                    Toast.LENGTH_LONG
+                    "📥 已开始下载至手机【下载】目录：\n$fileName",
+                    Toast.LENGTH_SHORT
                 ).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "下载请求失败: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -188,12 +231,23 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
 
     val currentSongs = viewModel.musicMap[viewModel.selectedPlaylist] ?: emptyList()
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    // 搜索实时过滤
+    val displaySongs = remember(currentSongs, searchQuery) {
+        if (searchQuery.isBlank()) {
+            currentSongs
+        } else {
+            val q = searchQuery.trim().lowercase()
+            currentSongs.filter { it.lowercase().contains(q) }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
         // 顶部标题与当前输出设备胶囊
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -206,17 +260,21 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "共收录 ${viewModel.musicMap.values.flatten().toSet().size} 首本地歌曲",
+                        text = "共收录 ${viewModel.musicMap.values.flatten().toSet().size} 首歌曲 · 长按歌曲可分配歌单",
                         style = MaterialTheme.typography.bodySmall.copy(color = Color.Gray)
                     )
                 }
 
-                IconButton(onClick = { viewModel.loadMusic(config, forceRefresh = true) }) {
-                    Icon(Icons.Default.Refresh, contentDescription = "刷新并重扫磁盘", tint = TealPrimary)
+                IconButton(onClick = { triggerDiskRescan() }) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "重新扫描磁盘曲库",
+                        tint = TealPrimary
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // 当前播放输出设备指示胶囊
             Row(
@@ -240,9 +298,65 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                     color = if (currentDevice.isLocal) TealPrimary else Color(0xFFE65100)
                 )
             }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 🔍 本地歌曲搜索框
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                placeholder = {
+                    Text(
+                        text = "搜索当前歌单歌曲 (支持模糊匹配)...",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "搜索",
+                        tint = TealPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "清空搜索",
+                                    tint = Color.Gray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        IconButton(onClick = { showVoiceDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "语音点歌/下载",
+                                tint = TealPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(26.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = TealPrimary,
+                    unfocusedBorderColor = Color.LightGray.copy(alpha = 0.6f)
+                )
+            )
         }
 
-        // 歌单分类 Tab / 标签栏
+        // 歌单分类 Tab 标签栏
         if (viewModel.musicMap.isNotEmpty()) {
             ScrollableTabRow(
                 selectedTabIndex = viewModel.musicMap.keys.toList().indexOf(viewModel.selectedPlaylist).coerceAtLeast(0),
@@ -252,7 +366,10 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                 viewModel.musicMap.keys.forEach { listName ->
                     Tab(
                         selected = viewModel.selectedPlaylist == listName,
-                        onClick = { viewModel.selectedPlaylist = listName },
+                        onClick = {
+                            viewModel.selectedPlaylist = listName
+                            searchQuery = "" // 切换歌单时自动重置搜索框
+                        },
                         text = {
                             Text(
                                 text = "$listName (${viewModel.musicMap[listName]?.size ?: 0})",
@@ -273,66 +390,93 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(text = viewModel.errorMsg ?: "", color = Color.Red, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(10.dp))
-                    Button(onClick = { viewModel.loadMusic(config, forceRefresh = true) }) {
+                    Button(onClick = { triggerDiskRescan() }) {
                         Text("重试并重新扫描磁盘")
                     }
                 }
             }
-        } else if (currentSongs.isEmpty()) {
+        } else if (displaySongs.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(text = "当前歌单暂无歌曲，快去「B站搜索」下载吧~", color = Color.Gray, fontSize = 14.sp)
+                if (searchQuery.isNotBlank()) {
+                    Text(text = "未找到包含「$searchQuery」的歌曲", color = Color.Gray, fontSize = 14.sp)
+                } else {
+                    Text(text = "当前歌单暂无歌曲，快去「B站搜索」下载吧~", color = Color.Gray, fontSize = 14.sp)
+                }
             }
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 80.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(currentSongs) { songName ->
+                items(displaySongs, key = { it }) { songName ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { playSong(songName) },
-                        shape = RoundedCornerShape(8.dp),
+                            .combinedClickable(
+                                onClick = { playSong(songName) },
+                                onLongClick = { songForPlaylistDialog = songName }
+                            ),
+                        shape = RoundedCornerShape(10.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // 歌曲图标
                             Icon(
                                 imageVector = Icons.Default.MusicNote,
                                 contentDescription = null,
                                 tint = TealPrimary,
                                 modifier = Modifier.size(24.dp)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = songName,
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
 
-                            // 操作区：播放 / 投送
-                            IconButton(onClick = { playSong(songName) }) {
-                                Icon(
-                                    imageVector = if (currentDevice.isLocal) Icons.Default.PlayArrow else Icons.Default.Speaker,
-                                    contentDescription = "播放",
-                                    tint = if (currentDevice.isLocal) TealPrimary else Color(0xFFE65100)
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            // 歌曲名（点击整行短按直接播放）
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = songName,
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "轻触播放 · 长按加入歌单",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.Gray.copy(alpha = 0.7f),
+                                        fontSize = 11.sp
+                                    )
                                 )
                             }
 
-                            // 操作区：下载到手机
-                            IconButton(onClick = { downloadSongToPhone(songName) }) {
+                            // 更多操作：分配歌单快捷入口
+                            IconButton(
+                                onClick = { songForPlaylistDialog = songName },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlaylistAdd,
+                                    contentDescription = "指定歌单",
+                                    tint = TealPrimary.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            // 下载到手机公共下载目录
+                            IconButton(
+                                onClick = { downloadSongToPhone(songName) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.Download,
                                     contentDescription = "下载到手机",
-                                    tint = TealPrimary
+                                    tint = TealPrimary,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
@@ -340,5 +484,299 @@ fun HomeScreen(viewModel: HomeViewModel = viewModel()) {
                 }
             }
         }
+        }
+
+        // 🎤 悬浮语音点歌按钮 (右下角常驻入口)
+        FloatingActionButton(
+            onClick = { showVoiceDialog = true },
+            containerColor = TealPrimary,
+            contentColor = Color.White,
+            shape = CircleShape,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Mic,
+                contentDescription = "语音点歌",
+                modifier = Modifier.size(26.dp)
+            )
+        }
     }
+
+    // 🎤 离线语音控制对话框
+    if (showVoiceDialog) {
+        val allSongs = remember(viewModel.musicMap) {
+            viewModel.musicMap.values.flatten().distinct()
+        }
+        VoiceControlDialog(
+            allSongs = allSongs,
+            onDismiss = { showVoiceDialog = false },
+            onPlaySong = { matchedSong ->
+                playSong(matchedSong)
+                showVoiceDialog = false
+            },
+            onNavigateToDownload = { keyword ->
+                showVoiceDialog = false
+                onNavigateToDownload?.invoke(keyword)
+            }
+        )
+    }
+
+    // 🎵 歌单指定对话框 (长按歌曲触发)
+    songForPlaylistDialog?.let { targetSong ->
+        AssignPlaylistDialog(
+            songName = targetSong,
+            musicMap = viewModel.musicMap,
+            onDismiss = { songForPlaylistDialog = null },
+            onPlaylistUpdated = {
+                viewModel.loadMusic(config, forceRefresh = false)
+            }
+        )
+    }
+}
+
+/**
+ * 指定归属歌单弹窗
+ */
+@Composable
+fun AssignPlaylistDialog(
+    songName: String,
+    musicMap: Map<String, List<String>>,
+    onDismiss: () -> Unit,
+    onPlaylistUpdated: () -> Unit
+) {
+    val context = LocalContext.current
+    val config = XiaoMusicApplication.instance.serverConfig
+    val scope = rememberCoroutineScope()
+
+    // 排除“全部”，仅保留可编辑的自定义歌单
+    val customPlaylists = remember(musicMap) {
+        musicMap.keys.filter { it != "全部" }
+    }
+
+    var newPlaylistName by remember { mutableStateOf("") }
+    var isOperating by remember { mutableStateOf(false) }
+
+    // 将歌曲添加到指定歌单
+    fun addSongTo(playlist: String) {
+        isOperating = true
+        scope.launch {
+            try {
+                val api = config.getApiService()
+                val res = api.addMusicToPlaylist(
+                    PlaylistMusicRequest(name = playlist, musicList = listOf(songName))
+                )
+                if (res.ret == "OK") {
+                    Toast.makeText(context, "✅ 已将歌曲加入歌单【$playlist】", Toast.LENGTH_SHORT).show()
+                    onPlaylistUpdated()
+                    onDismiss()
+                } else {
+                    Toast.makeText(context, "操作反馈: ${res.ret ?: "未知结果"}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "加入失败: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isOperating = false
+            }
+        }
+    }
+
+    // 从歌单中移除歌曲
+    fun removeSongFrom(playlist: String) {
+        isOperating = true
+        scope.launch {
+            try {
+                val api = config.getApiService()
+                val res = api.removeMusicFromPlaylist(
+                    PlaylistMusicRequest(name = playlist, musicList = listOf(songName))
+                )
+                if (res.ret == "OK") {
+                    Toast.makeText(context, "已从歌单【$playlist】中移除", Toast.LENGTH_SHORT).show()
+                    onPlaylistUpdated()
+                    onDismiss()
+                } else {
+                    Toast.makeText(context, "移除反馈: ${res.ret ?: "未知结果"}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "移除失败: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isOperating = false
+            }
+        }
+    }
+
+    // 创建新歌单并直接加入该歌曲
+    fun createAndAdd(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) {
+            Toast.makeText(context, "请输入新歌单名称", Toast.LENGTH_SHORT).show()
+            return
+        }
+        isOperating = true
+        scope.launch {
+            try {
+                val api = config.getApiService()
+                val createRes = api.createPlaylist(CreatePlaylistRequest(name = trimmed))
+                if (createRes.ret == "OK") {
+                    // 创建成功，紧接着将该歌曲加入新歌单
+                    api.addMusicToPlaylist(
+                        PlaylistMusicRequest(name = trimmed, musicList = listOf(songName))
+                    )
+                    Toast.makeText(context, "🎉 已创建歌单【$trimmed】并成功收纳该歌曲", Toast.LENGTH_SHORT).show()
+                    onPlaylistUpdated()
+                    onDismiss()
+                } else {
+                    Toast.makeText(context, "创建歌单失败: ${createRes.ret ?: "已存在或异常"}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "操作失败: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isOperating = false
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(text = "指定归属歌单", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = songName,
+                    fontSize = 12.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 350.dp)
+            ) {
+                if (isOperating) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = TealPrimary, modifier = Modifier.size(32.dp))
+                    }
+                } else {
+                    Text(
+                        text = "选择要加入的已有歌单：",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.DarkGray
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (customPlaylists.isEmpty()) {
+                        Text(
+                            text = "暂无自定义歌单，可在下方新建一个~",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .weight(1f, fill = false)
+                                .fillMaxWidth()
+                        ) {
+                            items(customPlaylists) { pName ->
+                                val songsInThisPlaylist = musicMap[pName] ?: emptyList()
+                                val isAlreadyIn = songsInThisPlaylist.contains(songName)
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(
+                                            if (isAlreadyIn) TealPrimary.copy(alpha = 0.1f) else Color.Transparent
+                                        )
+                                        .clickable {
+                                            if (isAlreadyIn) {
+                                                removeSongFrom(pName)
+                                            } else {
+                                                addSongTo(pName)
+                                            }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null,
+                                            tint = if (isAlreadyIn) TealPrimary else Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "$pName (${songsInThisPlaylist.size}首)",
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isAlreadyIn) FontWeight.SemiBold else FontWeight.Normal,
+                                            color = if (isAlreadyIn) TealPrimary else Color.Black
+                                        )
+                                    }
+
+                                    if (isAlreadyIn) {
+                                        Text(
+                                            text = "已在歌单 (点击移出)",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFFD32F2F)
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "+ 加入",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TealPrimary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Divider(color = Color.LightGray.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // 新建歌单快捷输入栏
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = newPlaylistName,
+                            onValueChange = { newPlaylistName = it },
+                            placeholder = { Text("新歌单名...", fontSize = 12.sp) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp),
+                            singleLine = true,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = { createAndAdd(newPlaylistName) },
+                            enabled = newPlaylistName.isNotBlank() && !isOperating,
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Text("新建并加入", fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭", color = TealPrimary)
+            }
+        }
+    )
 }

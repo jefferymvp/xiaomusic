@@ -81,7 +81,15 @@ dependencies {
     // 协程
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
+    // 离线语音识别 (sherpa-onnx)
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:v1.13.8@aar")
+
+    // 中文拼音转换与模糊纠错 (pinyin4j)
+    implementation("com.belerweb:pinyin4j:2.5.1")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    testImplementation("junit:junit:4.13.2")
 }
 

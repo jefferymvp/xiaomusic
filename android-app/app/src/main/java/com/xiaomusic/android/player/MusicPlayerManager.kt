@@ -346,8 +346,11 @@ class MusicPlayerManager(context: Context) {
     }
 
     fun stop() {
+        progressJob?.cancel()
+        devicePollingJob?.cancel()
         if (!_playerState.value.isDevicePlayback) {
             player.stop()
+            player.clearMediaItems()
         } else {
             val did = _playerState.value.deviceDid
             if (did.isNotBlank()) {
@@ -361,7 +364,12 @@ class MusicPlayerManager(context: Context) {
                 }
             }
         }
-        _playerState.value = _playerState.value.copy(isPlaying = false, currentPosition = 0L)
+        _playerState.value = _playerState.value.copy(
+            isPlaying = false,
+            currentPosition = 0L,
+            currentSongName = "",
+            isLoading = false
+        )
     }
 
     private fun startProgressTracker() {

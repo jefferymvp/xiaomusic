@@ -74,4 +74,26 @@ interface ApiService {
     suspend fun getPlayingMusic(
         @Query("did") did: String
     ): PlayingMusicResponse
+
+    // 13. 获取自定义歌单名称列表
+    @GET("/playlistnames")
+    suspend fun getPlaylistNames(): PlaylistNamesResponse
+
+    // 14. 新建歌单
+    @POST("/playlistadd")
+    suspend fun createPlaylist(
+        @Body request: CreatePlaylistRequest
+    ): SimpleRetResponse
+
+    // 15. 向歌单添加歌曲
+    @POST("/playlistaddmusic")
+    suspend fun addMusicToPlaylist(
+        @Body request: PlaylistMusicRequest
+    ): SimpleRetResponse
+
+    // 16. 从歌单移除歌曲
+    @POST("/playlistdelmusic")
+    suspend fun removeMusicFromPlaylist(
+        @Body request: PlaylistMusicRequest
+    ): SimpleRetResponse
 }

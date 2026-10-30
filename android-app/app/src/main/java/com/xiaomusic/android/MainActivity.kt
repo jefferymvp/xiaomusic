@@ -15,8 +15,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.xiaomusic.android.ui.components.BottomPlayerBar
 import com.xiaomusic.android.ui.screens.BiliSearchScreen
+import com.xiaomusic.android.ui.screens.BiliSearchViewModel
 import com.xiaomusic.android.ui.screens.HomeScreen
 import com.xiaomusic.android.ui.screens.SettingsScreen
 import com.xiaomusic.android.ui.theme.XiaoMusicTheme
@@ -34,6 +36,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             XiaoMusicTheme {
                 var currentScreen by remember { mutableStateOf(Screen.HOME) }
+                val biliSearchViewModel: BiliSearchViewModel = viewModel()
 
                 Scaffold(
                     bottomBar = {
@@ -60,8 +63,15 @@ class MainActivity : ComponentActivity() {
                             .padding(innerPadding)
                     ) {
                         when (currentScreen) {
-                            Screen.HOME -> HomeScreen()
-                            Screen.BILI_SEARCH -> BiliSearchScreen()
+                            Screen.HOME -> HomeScreen(
+                                onNavigateToDownload = { keyword ->
+                                    val config = XiaoMusicApplication.instance.serverConfig
+                                    biliSearchViewModel.keyword = keyword
+                                    biliSearchViewModel.doSearch(config)
+                                    currentScreen = Screen.BILI_SEARCH
+                                }
+                            )
+                            Screen.BILI_SEARCH -> BiliSearchScreen(viewModel = biliSearchViewModel)
                             Screen.SETTINGS -> SettingsScreen()
                         }
                     }

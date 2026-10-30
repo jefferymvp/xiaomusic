@@ -116,3 +116,18 @@ data class PlaybackDevice(
     val name: String,
     val isLocal: Boolean = false
 )
+
+// 歌单管理数据模型
+data class CreatePlaylistRequest(
+    val name: String
+)
+
+data class PlaylistMusicRequest(
+    val name: String,
+    @SerializedName("music_list") val musicList: List<String>
+)
+
+data class PlaylistNamesResponse(
+    val ret: String? = null,
+    val names: List<String> = emptyList()
+)

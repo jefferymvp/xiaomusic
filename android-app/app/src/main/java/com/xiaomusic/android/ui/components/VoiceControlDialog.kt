@@ -35,6 +35,7 @@ import com.xiaomusic.android.voice.VoiceIntentParser
 import com.xiaomusic.android.voice.VoiceIntentType
 import com.xiaomusic.android.voice.VoiceRecordState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * 语音控制对话框 (支持离线识别“我想听xxx”点歌与“我要下载xxx”跳转下载)
@@ -47,10 +48,10 @@ fun VoiceControlDialog(
     onNavigateToDownload: (keyword: String) -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val voiceManager = XiaoMusicApplication.instance.voiceManager
 
     val recordState by voiceManager.state.collectAsState()
-    val partialText by voiceManager.partialText.collectAsState()
     val audioVolume by voiceManager.audioVolume.collectAsState()
     val errorMsg by voiceManager.errorMessage.collectAsState()
 
@@ -59,7 +60,7 @@ fun VoiceControlDialog(
     var pinyinResult by remember { mutableStateOf<com.xiaomusic.android.voice.PinyinMatchResult?>(null) }
     var hasHandledAction by remember { mutableStateOf(false) }
 
-    // 处理最终识别文本
+    // 处理最终识别文本 (录音全量完成并纠偏后统一处理)
     fun handleFinalText(text: String) {
         if (text.isBlank()) {
             Toast.makeText(context, "未听清您说的话，请重试~", Toast.LENGTH_SHORT).show()
@@ -78,7 +79,11 @@ fun VoiceControlDialog(
                 if (match != null && match.isLocalAvailable) {
                     matchedLocalSong = match.matchedSong
                     hasHandledAction = true
-                    onPlaySong(match.matchedSong)
+                    // 暂停1秒让用户完整看清纠正后的所有文字，随后优雅转向播放
+                    coroutineScope.launch {
+                        delay(1000)
+                        onPlaySong(match.matchedSong)
+                    }
                 } else {
                     matchedLocalSong = null
                 }
@@ -90,7 +95,11 @@ fun VoiceControlDialog(
                 pinyinResult = match
                 val targetKeyword = match?.cleanTitle ?: result.keyword
                 hasHandledAction = true
-                onNavigateToDownload(targetKeyword)
+                // 暂停1秒后前往B站搜索下载
+                coroutineScope.launch {
+                    delay(1000)
+                    onNavigateToDownload(targetKeyword)
+                }
             }
 
             VoiceIntentType.UNKNOWN -> {
@@ -243,47 +252,76 @@ fun VoiceControlDialog(
                         )
                     } else if (commandResult != null) {
                         val result = commandResult!!
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "识别结果: 「${result.rawText}」",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.Gray
+                        val py = pinyinResult
+                        val correctedSentence = if (py != null) {
+                            com.xiaomusic.android.voice.PinyinMatcher.buildCorrectedDisplayText(
+                                result.rawText,
+                                result.keyword,
+                                py.cleanTitle
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
+                        } else {
+                            result.rawText
+                        }
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            // 优先展示纠偏后的标准指令文本，观感优雅自然
+                            Text(
+                                text = "识别指令: 「$correctedSentence」",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
+                            )
+
+                            if (py != null && py.isCorrected) {
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = "🎯 发音纠偏:「${result.keyword}」→《${py.cleanTitle}》",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TealPrimary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
 
                             when (result.type) {
                                 VoiceIntentType.PLAY -> {
                                     if (matchedLocalSong != null) {
-                                        val py = pinyinResult
-                                        if (py != null && py.isCorrected) {
-                                            Text(
-                                                text = "🎯 拼音自动纠正:「${result.keyword}」->《${py.cleanTitle}》",
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TealPrimary,
-                                                textAlign = TextAlign.Center
-                                            )
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = "▶ 正在播放: $matchedLocalSong",
-                                                fontSize = 12.sp,
-                                                color = Color.DarkGray,
-                                                textAlign = TextAlign.Center
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "🎉 已匹配并播放: $matchedLocalSong",
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TealPrimary,
-                                                textAlign = TextAlign.Center
-                                            )
-                                        }
+                                        Text(
+                                            text = "▶ 正在播放: $matchedLocalSong",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TealPrimary,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "⏱️ 1秒后自动拉起播放...",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = TealPrimary.copy(alpha = 0.8f),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    } else if (py != null) {
+                                        Text(
+                                            text = "🔍 本地无此歌，已锁定歌名: 《${py.cleanTitle}》",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = BiliPink,
+                                            textAlign = TextAlign.Center
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "可点击下方按钮一键前往B站搜索下载",
+                                            fontSize = 11.sp,
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
+                                        )
                                     } else {
                                         Text(
                                             text = "本地未找到「${result.keyword}」",
-                                            fontSize = 14.sp,
+                                            fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFD32F2F)
                                         )
@@ -291,10 +329,19 @@ fun VoiceControlDialog(
                                 }
                                 VoiceIntentType.DOWNLOAD -> {
                                     Text(
-                                        text = "📥 正在跳转B站搜索下载「${result.keyword}」...",
-                                        fontSize = 14.sp,
+                                        text = "📥 正在跳转B站下载: 《${py?.cleanTitle ?: result.keyword}》",
+                                        fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = BiliPink
+                                        color = BiliPink,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "⏱️ 1秒后前往B站下载...",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = BiliPink.copy(alpha = 0.8f),
+                                        textAlign = TextAlign.Center
                                     )
                                 }
                                 VoiceIntentType.UNKNOWN -> {
@@ -302,17 +349,15 @@ fun VoiceControlDialog(
                                 }
                             }
                         }
-                    } else if (partialText.isNotBlank()) {
-                        Text(
-                            text = "“$partialText”",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center
-                        )
                     } else {
+                        // 录音期间不逐字显示碎词，统一沉浸式聆听展示，全部识别纠偏后再整体呈现
                         Text(
-                            text = if (recordState == VoiceRecordState.INITIALIZING) "正在加载离线模型..." else "请说话，正在聆听中...",
+                            text = when (recordState) {
+                                VoiceRecordState.INITIALIZING -> "正在加载离线模型..."
+                                VoiceRecordState.PROCESSING -> "⏳ 识别完毕，正在纠偏匹配..."
+                                VoiceRecordState.LISTENING -> "🎙️ 正在聆听您的指令，说完请稍候..."
+                                else -> "请轻触麦克风开始说话..."
+                            },
                             fontSize = 14.sp,
                             color = Color.Gray,
                             textAlign = TextAlign.Center
@@ -331,7 +376,8 @@ fun VoiceControlDialog(
                     if (commandResult?.type == VoiceIntentType.PLAY && matchedLocalSong == null && commandResult?.keyword?.isNotBlank() == true) {
                         Button(
                             onClick = {
-                                onNavigateToDownload(commandResult!!.keyword)
+                                val targetKeyword = pinyinResult?.cleanTitle ?: commandResult!!.keyword
+                                onNavigateToDownload(targetKeyword)
                                 onDismiss()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = BiliPink),

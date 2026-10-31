@@ -101,6 +101,7 @@ fun HomeScreen(
     val focusManager = LocalFocusManager.current
 
     val currentDevice by config.currentDeviceState.collectAsState()
+    val playerState by player.playerState.collectAsState()
 
     // 搜索关键字
     var searchQuery by remember { mutableStateOf("") }
@@ -410,15 +411,28 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(displaySongs, key = { it }) { songName ->
+                    val isCurrentSong = (playerState.currentSongName == songName)
+                    val isCurrentPlaying = isCurrentSong && playerState.isPlaying
+
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .combinedClickable(
-                                onClick = { playSong(songName) },
+                                onClick = {
+                                    if (isCurrentPlaying) {
+                                        player.togglePlayPause()
+                                    } else if (isCurrentSong && playerState.currentSongName.isNotEmpty()) {
+                                        player.togglePlayPause()
+                                    } else {
+                                        playSong(songName)
+                                    }
+                                },
                                 onLongClick = { songForPlaylistDialog = songName }
                             ),
                         shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isCurrentPlaying) TealPrimary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                        ),
                         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
                         Row(
@@ -429,26 +443,33 @@ fun HomeScreen(
                         ) {
                             // 歌曲图标
                             Icon(
-                                imageVector = Icons.Default.MusicNote,
+                                imageVector = if (isCurrentPlaying) Icons.Default.PauseCircle else Icons.Default.MusicNote,
                                 contentDescription = null,
-                                tint = TealPrimary,
+                                tint = if (isCurrentPlaying) TealPrimary else TealPrimary.copy(alpha = 0.8f),
                                 modifier = Modifier.size(24.dp)
                             )
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            // 歌曲名（点击整行短按直接播放）
+                            // 歌曲名（点击整行短按：播放中则暂停，已暂停则恢复，否则播放）
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = songName,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = if (isCurrentSong) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isCurrentPlaying) TealPrimary else MaterialTheme.colorScheme.onSurface
+                                    ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "轻触播放 · 长按加入歌单",
+                                    text = when {
+                                        isCurrentPlaying -> "正在播放中 · 轻触暂停"
+                                        isCurrentSong && playerState.currentSongName.isNotEmpty() -> "已暂停 · 轻触恢复播放"
+                                        else -> "轻触播放 · 长按加入歌单"
+                                    },
                                     style = MaterialTheme.typography.bodySmall.copy(
-                                        color = Color.Gray.copy(alpha = 0.7f),
+                                        color = if (isCurrentPlaying) TealPrimary else Color.Gray.copy(alpha = 0.7f),
                                         fontSize = 11.sp
                                     )
                                 )

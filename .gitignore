@@ -174,3 +174,5 @@ node_modules
 reference/
 .aone_copilot/
 .idea/
+process/*.mp3
+process/*.wav

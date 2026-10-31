@@ -36,7 +36,14 @@ class SherpaVoiceManager(private val context: Context) {
         private const val ASSETS_MODEL_DIR = "sherpa-onnx"
     }
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        Log.e(TAG, "全局语音协程异常: ${throwable.message}", throwable)
+        _errorMessage.value = "录音发生异常: ${throwable.localizedMessage}"
+        _state.value = VoiceRecordState.ERROR
+        isRecording.set(false)
+    }
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob() + exceptionHandler)
 
     private var recognizer: OnlineRecognizer? = null
     private var isModelLoaded = false
@@ -121,7 +128,7 @@ class SherpaVoiceManager(private val context: Context) {
     }
 
     /**
-     * 开启麦克风录音并开始实时识别
+     * 开启麦克风录音并开始实时识别 (纯离线稳定模式)
      * @param onFinalResult 最终识别完成时的回调 (返回识别文本)
      */
     @SuppressLint("MissingPermission")
@@ -129,23 +136,23 @@ class SherpaVoiceManager(private val context: Context) {
         if (isRecording.get()) return
 
         scope.launch {
-            if (!initEngine()) {
-                return@launch
-            }
-
-            val currentRecognizer = recognizer ?: return@launch
-            _partialText.value = ""
-            _audioVolume.value = 0f
-            _errorMessage.value = null
-            _state.value = VoiceRecordState.LISTENING
-
-            val minBufferSize = AudioRecord.getMinBufferSize(
-                SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT
-            ).coerceAtLeast(SAMPLE_RATE / 10 * 2)
-
             try {
+                if (!initEngine()) {
+                    return@launch
+                }
+
+                val currentRecognizer = recognizer ?: return@launch
+                _partialText.value = ""
+                _audioVolume.value = 0f
+                _errorMessage.value = null
+                _state.value = VoiceRecordState.LISTENING
+
+                val minBufferSize = AudioRecord.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                ).coerceAtLeast(SAMPLE_RATE / 10 * 2)
+
                 val record = AudioRecord(
                     MediaRecorder.AudioSource.MIC,
                     SAMPLE_RATE,
@@ -155,7 +162,7 @@ class SherpaVoiceManager(private val context: Context) {
                 )
 
                 if (record.state != AudioRecord.STATE_INITIALIZED) {
-                    _errorMessage.value = "无法初始化麦克风录音设备"
+                    _errorMessage.value = "无法初始化麦克风录音设备，请检查权限"
                     _state.value = VoiceRecordState.ERROR
                     return@launch
                 }
@@ -214,21 +221,27 @@ class SherpaVoiceManager(private val context: Context) {
                             }
                         }
                     } finally {
-                        // 结束采音并收尾
+                        // 结束采音并安全收尾
                         isRecording.set(false)
-                        val finalResult = currentRecognizer.getResult(stream).text.trim().ifEmpty { lastResultText }
-                        stream.release()
+                        withContext(NonCancellable) {
+                            try {
+                                val finalResult = currentRecognizer.getResult(stream).text.trim().ifEmpty { lastResultText }
+                                stream.release()
 
-                        withContext(Dispatchers.Main) {
-                            _audioVolume.value = 0f
-                            _state.value = VoiceRecordState.PROCESSING
-                            onFinalResult(finalResult)
-                            _state.value = VoiceRecordState.IDLE
+                                withContext(Dispatchers.Main) {
+                                    _audioVolume.value = 0f
+                                    _state.value = VoiceRecordState.PROCESSING
+                                    onFinalResult(finalResult)
+                                    _state.value = VoiceRecordState.IDLE
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "收尾释放流异常: ${e.message}")
+                            }
                         }
                     }
                 }
 
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e(TAG, "录音识别异常: ${e.message}", e)
                 _errorMessage.value = "录音失败: ${e.localizedMessage}"
                 _state.value = VoiceRecordState.ERROR

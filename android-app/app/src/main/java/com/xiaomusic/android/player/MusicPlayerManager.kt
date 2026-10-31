@@ -172,6 +172,20 @@ class MusicPlayerManager(context: Context) {
                     val res = api.getPlayingMusic(did)
                     withContext(Dispatchers.Main) {
                         if (_playerState.value.isDevicePlayback && _playerState.value.deviceDid == did) {
+                            // 若音箱当前并未在播放，且本地未处于播放态，则清理当前歌曲名，防止进入歌单时误弹播放条
+                            if (!res.isPlaying && !_playerState.value.isPlaying) {
+                                if (_playerState.value.currentSongName.isNotEmpty()) {
+                                    _playerState.value = _playerState.value.copy(
+                                        currentSongName = "",
+                                        isPlaying = false,
+                                        currentPosition = 0L,
+                                        duration = 0L,
+                                        isLoading = false
+                                    )
+                                }
+                                return@withContext
+                            }
+
                             val songName = if (!res.curMusic.isNullOrBlank()) res.curMusic else _playerState.value.currentSongName
                             val posMs = (res.offset * 1000).toLong().coerceAtLeast(0L)
                             val durMs = (res.duration * 1000).toLong().coerceAtLeast(0L)

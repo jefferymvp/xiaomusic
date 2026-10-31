@@ -189,9 +189,20 @@
                 <input type="text" id="home-playlist-url" class="search-input" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="输入或粘贴歌单链接 (如 https://m.bilibili.com/video/BV1WUsDezE88)">
             </div>
             
-            <div style="margin-bottom: 12px;">
+            <div style="margin-bottom: 10px;">
                 <label for="home-playlist-dirname" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #333;">保存歌单名称：</label>
                 <input type="text" id="home-playlist-dirname" class="search-input" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="例如：流行热歌">
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                <div style="flex: 1;">
+                    <label for="home-playlist-start" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #333;">起始序号（选填）：</label>
+                    <input type="number" id="home-playlist-start" class="search-input" min="1" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="默认 1 (从第几首开始)">
+                </div>
+                <div style="flex: 1;">
+                    <label for="home-playlist-end" style="display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: #333;">结束序号（选填）：</label>
+                    <input type="number" id="home-playlist-end" class="search-input" min="1" style="width: 100%; box-sizing: border-box; margin-bottom: 0;" placeholder="默认 全部 (如 50)">
+                </div>
             </div>
 
             <button id="home-playlist-download-btn" onclick="submitHomePlaylistDownload()" style="width: 100%; padding: 10px; background: #007bff; color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;">

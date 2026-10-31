@@ -1,5 +1,6 @@
 """Pydantic 数据模型定义"""
 
+from typing import Optional
 from pydantic import BaseModel
 
 
@@ -51,6 +52,8 @@ class DidPlayMusicList(BaseModel):
 class DownloadPlayList(BaseModel):
     dirname: str
     url: str
+    start_index: Optional[int] = None
+    end_index: Optional[int] = None
 
 
 class DownloadOneMusic(BaseModel):

@@ -286,6 +286,17 @@
 				<input type="text" id="dirname" class="form-input" placeholder="例如：流行经典 (自动在此目录下分类)">
 			</div>
 
+			<div class="form-group" style="display: flex; gap: 12px;">
+				<div style="flex: 1;">
+					<label for="playlistStart" class="form-label">起始序号（选填）：</label>
+					<input type="number" id="playlistStart" class="form-input" min="1" placeholder="默认 1 (从第几首开始)">
+				</div>
+				<div style="flex: 1;">
+					<label for="playlistEnd" class="form-label">结束序号（选填）：</label>
+					<input type="number" id="playlistEnd" class="form-input" min="1" placeholder="默认 全部 (如 50)">
+				</div>
+			</div>
+
 			<button id="downloadPlaylistBtn" class="btn-submit">📥 立即下载歌单</button>
 
 			<div id="playlistStatusMsg" class="status-msg"></div>
@@ -390,12 +401,27 @@
 		$('#downloadPlaylistBtn').click(function () {
 			const playlistUrl = $('#playlistUrl').val().trim();
 			const dirname = $('#dirname').val().trim();
+			const startVal = $('#playlistStart').val().trim();
+			const endVal = $('#playlistEnd').val().trim();
 			const statusMsg = $('#playlistStatusMsg');
 			const btn = $('#downloadPlaylistBtn');
 
 			if (!playlistUrl || !dirname) {
 				statusMsg.html('<span style="color: #e67e22;">⚠️ 请填写完整的歌单 URL 和保存歌单名字</span>');
 				return;
+			}
+
+			const payload = {
+				dirname: dirname,
+				url: playlistUrl
+			};
+			const startIndex = parseInt(startVal, 10);
+			const endIndex = parseInt(endVal, 10);
+			if (!isNaN(startIndex) && startIndex > 0) {
+				payload.start_index = startIndex;
+			}
+			if (!isNaN(endIndex) && endIndex > 0) {
+				payload.end_index = endIndex;
 			}
 
 			btn.prop("disabled", true).text("提交歌单任务中...").css("background", "#6c757d");
@@ -405,10 +431,7 @@
 				type: "POST",
 				url: "/downloadplaylist",
 				contentType: "application/json; charset=utf-8",
-				data: JSON.stringify({
-					dirname: dirname,
-					url: playlistUrl
-				}),
+				data: JSON.stringify(payload),
 				success: function (res) {
 					if (res.ret === "BUSY") {
 						statusMsg.html('<span style="color: #e67e22;">⚠️ ' + (res.msg || "已有歌单正在下载中") + '</span>');

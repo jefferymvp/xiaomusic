@@ -309,19 +309,25 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
             "current_song": "",
             "dirname": data.dirname,
             "url": data.url,  # 保存URL以便重新开始
+            "start_index": data.start_index,
+            "end_index": data.end_index,
             "task_type": "playlist",  # 标记任务类型
             "created_at": asyncio.get_event_loop().time(),
         }
 
         bili_fav_list = await check_bili_fav_list(data.url)
         if bili_fav_list:
-            total_songs = len(bili_fav_list)
+            items = list(bili_fav_list.items())
+            start = max(1, data.start_index) - 1 if (data.start_index and data.start_index > 0) else 0
+            end = data.end_index if (data.end_index and data.end_index > 0) else len(items)
+            sliced_items = items[start:end]
+            total_songs = len(sliced_items)
             download_tasks[task_id]["total"] = total_songs
             download_tasks[task_id]["status"] = "downloading"
 
             async def run_bili_fav_download():
                 try:
-                    for idx, (bvid, title) in enumerate(bili_fav_list.items(), 1):
+                    for idx, (bvid, title) in enumerate(sliced_items, 1):
                         bvurl = f"https://www.bilibili.com/video/{bvid}"
                         download_tasks[task_id]["current_song"] = (
                             f"{title} ({idx}/{total_songs})"
@@ -375,25 +381,28 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(data.url, download=False)
 
+                    total_count = 0
                     if info and "entries" in info:
                         entries = list(info["entries"])
                         total_count = len(entries)
-                        if total_count > 0:
-                            download_tasks[task_id]["total"] = total_count
-                            log.info(f"✓ Playlist has {total_count} items")
-                        else:
-                            log.warning("Empty playlist")
                     elif info and "playlist_count" in info:
                         total_count = info["playlist_count"]
-                        if total_count > 0:
-                            download_tasks[task_id]["total"] = total_count
-                            log.info(f"✓ Playlist has {total_count} items")
+
+                    if total_count > 0:
+                        start = data.start_index if (data.start_index and data.start_index > 0) else 1
+                        end = data.end_index if (data.end_index and data.end_index > 0) else total_count
+                        end = min(end, total_count)
+                        expected_total = max(1, end - start + 1)
+                        download_tasks[task_id]["total"] = expected_total
+                        log.info(f"✓ Playlist range [{start}:{end}], total: {expected_total} items (from full {total_count})")
                     else:
                         log.warning("Could not determine playlist size")
             except Exception as e:
                 log.warning(
                     f"Error getting playlist count via API: {e} (continuing anyway)"
                 )
+                if data.start_index and data.end_index and data.end_index >= data.start_index:
+                    download_tasks[task_id]["total"] = data.end_index - data.start_index + 1
 
             # 确保下载目录存在
             dir_path = safe_join_path(config.download_path, data.dirname)
@@ -401,7 +410,13 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
             log.info(f"Download directory ensured: {dir_path}")
 
             download_tasks[task_id]["current_song"] = "正在解析歌单..."
-            download_proc = await download_playlist(config, data.url, data.dirname)
+            download_proc = await download_playlist(
+                config,
+                data.url,
+                data.dirname,
+                start_index=data.start_index,
+                end_index=data.end_index,
+            )
             # 保存进程对象以便后续控制
             download_tasks[task_id]["process"] = download_proc
             log.info(f"Download process started, PID: {download_proc.pid}")
@@ -440,7 +455,10 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
                     download_tasks[task_id]["status"] = (
                         "completed" if exit_code == 0 else "failed"
                     )
-                    download_tasks[task_id]["current_song"] = ""
+                    if exit_code != 0:
+                        download_tasks[task_id]["current_song"] = f"下载未完全成功 (退出码: {exit_code})"
+                    else:
+                        download_tasks[task_id]["current_song"] = ""
                     # 更新最终的完成数量
                     if os.path.exists(dir_path):
                         final_count = len(
@@ -478,7 +496,7 @@ async def downloadplaylist(data: DownloadPlayList, Verifcation=Depends(verificat
             download_tasks[task_id]["status"] = "failed"
             download_tasks[task_id]["current_song"] = str(e)
 
-    return {"ret": "Failed download", "task_id": task_id}
+        return {"ret": "Failed download", "task_id": task_id, "msg": str(e)}
 
 
 @router.post("/downloadonemusic")
@@ -621,7 +639,7 @@ async def downloadonemusic(data: DownloadOneMusic, Verifcation=Depends(verificat
             download_tasks[task_id]["status"] = "failed"
             download_tasks[task_id]["current_song"] = str(e)
 
-    return {"ret": "Failed download", "task_id": task_id}
+        return {"ret": "Failed download", "task_id": task_id, "msg": str(e)}
 
 
 @router.get("/api/download/active_playlist")
@@ -897,7 +915,12 @@ async def restart_download(task_id: str, Verifcation=Depends(verification)):
             # 歌单下载：重新发起歌单下载请求
             from xiaomusic.api.models import DownloadPlayList
 
-            data = DownloadPlayList(dirname=old_task["dirname"], url=old_task["url"])
+            data = DownloadPlayList(
+                dirname=old_task["dirname"],
+                url=old_task["url"],
+                start_index=old_task.get("start_index"),
+                end_index=old_task.get("end_index"),
+            )
             # 调用原有的下载函数
             result = await downloadplaylist(data, Verifcation)
             return result

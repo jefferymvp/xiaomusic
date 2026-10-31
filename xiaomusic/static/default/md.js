@@ -2242,12 +2242,27 @@ function checkActivePlaylistDownload() {
 function submitHomePlaylistDownload() {
   const url = $("#home-playlist-url").val().trim();
   const dirname = $("#home-playlist-dirname").val().trim();
+  const startVal = $("#home-playlist-start").val().trim();
+  const endVal = $("#home-playlist-end").val().trim();
   const statusMsg = $("#home-playlist-status-msg");
   const btn = $("#home-playlist-download-btn");
 
   if (!url || !dirname) {
     statusMsg.html('<span style="color: #e67e22;">⚠️ 请填写完整的歌单 URL 与保存歌单名字</span>');
     return;
+  }
+
+  const payload = {
+    url: url,
+    dirname: dirname
+  };
+  const startIndex = parseInt(startVal, 10);
+  const endIndex = parseInt(endVal, 10);
+  if (!isNaN(startIndex) && startIndex > 0) {
+    payload.start_index = startIndex;
+  }
+  if (!isNaN(endIndex) && endIndex > 0) {
+    payload.end_index = endIndex;
   }
 
   btn.prop("disabled", true).text("提交请求中...").css("background", "#6c757d");
@@ -2257,10 +2272,7 @@ function submitHomePlaylistDownload() {
     type: "POST",
     url: "/downloadplaylist",
     contentType: "application/json; charset=utf-8",
-    data: JSON.stringify({
-      url: url,
-      dirname: dirname
-    }),
+    data: JSON.stringify(payload),
     success: function (res) {
       if (res.ret === "BUSY") {
         statusMsg.html('<span style="color: #e67e22;">⚠️ ' + (res.msg || "已有歌单正在下载中") + '</span>');

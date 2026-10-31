@@ -145,7 +145,13 @@ async def check_bili_fav_list(url: str) -> dict:
     return bvid_info
 
 
-async def download_playlist(config, url: str, dirname: str):
+async def download_playlist(
+    config,
+    url: str,
+    dirname: str,
+    start_index: int | None = None,
+    end_index: int | None = None,
+):
     """
     下载播放列表
 
@@ -153,14 +159,21 @@ async def download_playlist(config, url: str, dirname: str):
         config: 配置对象
         url: 播放列表 URL
         dirname: 保存目录名
+        start_index: 起始序号（可选，从1开始）
+        end_index: 结束序号（可选）
 
     Returns:
         下载进程对象
     """
     title = f"{dirname}/%(title)s.%(ext)s"
-    sbp_args = (
-        "yt-dlp",
+    import shutil, sys
+
+    yt_cmd = shutil.which("yt-dlp")
+    base_cmd = (yt_cmd,) if yt_cmd else (sys.executable, "-m", "yt_dlp")
+
+    sbp_args = base_cmd + (
         "--yes-playlist",
+        "--ignore-errors",
         "-x",
         "--audio-format",
         "mp3",
@@ -173,6 +186,12 @@ async def download_playlist(config, url: str, dirname: str):
         "--ffmpeg-location",
         f"{config.ffmpeg_location}",
     )
+
+    if start_index is not None and start_index > 0:
+        sbp_args += ("--playlist-start", str(start_index))
+
+    if end_index is not None and end_index > 0:
+        sbp_args += ("--playlist-end", str(end_index))
 
     if config.proxy:
         sbp_args += ("--proxy", f"{config.proxy}")
